@@ -41,7 +41,7 @@ No production hosting assumptions beyond interfaces.
 
 ## Phase 2 — Live GitHub App vertical slice
 
-Status: **next**
+Status: **in progress — implementation-ready; live App proof pending**
 
 Register/install App with:
 
@@ -59,6 +59,24 @@ Prove:
 using real Issue Fields and sub-issues in one organization repository.
 
 Also prove GraphQL create/update/delete preserve unrelated fields.
+
+Implemented before live credentials:
+
+- pinned REST transport and runtime response validation;
+- real config/field/hierarchy/value adapters;
+- explicit GraphQL create/update/delete writer;
+- GitHub App JWT signing and repository-scoped installation-token exchange;
+- dry-run-by-default live contract harness;
+- post-write target verification;
+- non-target field preservation comparison;
+- fail-closed Phase 2 handling for cross-repository and nested hierarchy inputs.
+
+Still required to complete Phase 2:
+
+- register/install the controlled GitHub App with the documented permissions;
+- capture a real webhook fixture;
+- execute the live 3 + 5 -> 8 path;
+- exercise live create, update, and delete while preservation checks remain green.
 
 This is the earliest point at which IssueRollup is unquestionably a working GitHub API integration in development.
 

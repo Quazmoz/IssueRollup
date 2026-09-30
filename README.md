@@ -117,6 +117,7 @@ GitHub does not automatically retry failed webhook deliveries, so reconciliation
 - [Roadmap](docs/ROADMAP.md)
 - [Research and platform rationale](docs/RESEARCH.md)
 - [Developer Program / launch checklist](docs/LAUNCH_CHECKLIST.md)
+- [Live GitHub App contract test](docs/LIVE_CONTRACT_TEST.md)
 
 ## Development
 
@@ -130,15 +131,25 @@ npm run build
 npm run verify
 ~~~
 
-`npm run verify` is the current CI quality gate and runs strict type checking plus the full build/test suite. Phase 1 deliberately does not add a separate lint or formatting dependency.
+`npm run verify` is the current CI quality gate and runs strict type checking plus the full build/test suite. The live GitHub integration harness is `npm run live:contract`; it is dry-run by default and requires an explicit apply sentinel before it can mutate GitHub.
 
 ## Status
 
-**Phase 1 — Local vertical slice: complete.**
+**Phase 1 is complete. Phase 2 implementation is code-ready; live GitHub App proof is still pending.**
 
-The repository now contains a strict TypeScript local foundation with configuration parsing/validation, deterministic sum reduction and write planning, raw-body webhook HMAC verification, webhook/work-envelope normalization, narrow GitHub adapter contracts, error classification, and regression coverage.
+The repository now includes:
 
-The core local contract is executable without GitHub credentials:
+- strict configuration parsing and numeric rollup evaluation;
+- real REST adapters for repository config, organization Issue Fields, issue identity, parent/sub-issue hierarchy, and Issue Field values;
+- pinned GitHub REST API headers and bounded request timeouts;
+- static GraphQL create/update/delete mutations for one derived Issue Field;
+- GitHub App RS256 JWT generation and repository-scoped installation-token exchange;
+- a dry-run-by-default live contract harness;
+- post-write target verification;
+- live-harness comparison proving non-target Issue Field values remain unchanged;
+- fail-closed handling for cross-repository edges and nested hierarchies that Phase 3 has not implemented yet.
+
+The local Phase 2 path can now exercise:
 
 ~~~text
 child Effort 3 + child Effort 5
@@ -146,7 +157,9 @@ child Effort 3 + child Effort 5
 parent Total Effort 8
 ~~~
 
-IssueRollup is **not** a live or production-ready GitHub App yet. Phase 1 does not register an App, make authenticated GitHub calls, provide a durable queue/database, or deploy production infrastructure. Phase 2 is the live GitHub App vertical slice.
+against real GitHub APIs once a test GitHub App is registered and installed.
+
+IssueRollup is **not production-ready**. No GitHub App has been registered or installed by this repository work, no real mutation has been executed yet, and Phase 3 still owns durable ingestion, mutation-lane fencing, nested propagation, reconciliation, and production retry/rate-limit behavior. See [the live contract test guide](docs/LIVE_CONTRACT_TEST.md).
 
 ## Support
 

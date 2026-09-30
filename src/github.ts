@@ -12,22 +12,21 @@ export interface ConfigBlob {
   readonly defaultBranch: string;
 }
 
-export interface ParentRef {
-  readonly repository: RepositoryIdentity;
+export interface IssueRef {
+  readonly repositoryFullName: string;
   readonly issueId: number;
   readonly issueNumber: number;
   readonly nodeId: string;
 }
 
-export interface ChildRef extends ParentRef {
-  readonly hasSubIssues: boolean;
-}
+export type ParentRef = IssueRef;
+export type ChildRef = IssueRef;
 
 export interface FieldValue {
   readonly fieldId: number;
   readonly fieldName: string;
   readonly dataType: string;
-  readonly value: number;
+  readonly value: unknown;
 }
 
 export interface ConfigSource {
@@ -36,6 +35,10 @@ export interface ConfigSource {
 
 export interface FieldCatalogSource {
   listOrganizationFields(organization: string): Promise<readonly IssueFieldDefinition[]>;
+}
+
+export interface IssueSource {
+  getIssue(repository: RepositoryIdentity, issueNumber: number): Promise<IssueRef>;
 }
 
 export interface HierarchySource {
@@ -58,6 +61,7 @@ export interface FieldWriter {
 export interface GitHubAdapters {
   readonly config: ConfigSource;
   readonly fields: FieldCatalogSource;
+  readonly issues: IssueSource;
   readonly hierarchy: HierarchySource;
   readonly values: FieldValueSource;
   readonly writer: FieldWriter;

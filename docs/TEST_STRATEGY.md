@@ -215,3 +215,7 @@ MVP is not complete until:
 - same-key concurrent workers cannot leave a stale final value;
 - timeout-after-success mutation recovery is proven;
 - no unrelated metadata is mutated.
+
+## Phase 2 live harness
+
+The controlled live matrix and credential-handling procedure are documented in [LIVE_CONTRACT_TEST.md](LIVE_CONTRACT_TEST.md). A live run is required before Phase 2 can be marked complete; mock adapter tests do not substitute for GitHub authorization and mutation-preservation evidence.

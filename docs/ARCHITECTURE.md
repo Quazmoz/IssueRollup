@@ -6,18 +6,20 @@ Keep rollup **calculation state** in GitHub while making webhook delivery handli
 
 V1 has no product database containing a second copy of issue hierarchy or field values. A production deployment may use infrastructure state such as a durable queue, short-lived deduplication keys, and logs.
 
-## Proposed stack
+## Current implementation stack
 
-Recommended:
+Phase 1/2 currently uses:
 
-- TypeScript
-- Node.js Active LTS selected at implementation bootstrap and pinned in repository/runtime metadata
-- Octokit / GitHub App authentication library
-- lightweight HTTP framework or Probot
-- YAML parser in safe mode
-- Zod/JSON Schema for config and payload validation
-- Vitest
-- durable queue appropriate to the host for production
+- TypeScript with strict type checking;
+- Node.js 24.21.0 pinned in repository/runtime metadata;
+- Node's built-in `fetch` behind narrow GitHub REST/GraphQL adapters;
+- Node crypto for webhook HMAC verification and GitHub App RS256 JWT signing;
+- explicit runtime validators at GitHub/config/webhook boundaries;
+- `yaml` in strict/safe configuration parsing;
+- Node's built-in test runner;
+- no web framework or production queue yet.
+
+A durable queue and HTTP ingress framework remain deployment decisions for Phase 3. Adding Octokit, Probot, Zod, Vitest, or another abstraction requires a concrete correctness/maintenance benefit rather than duplicating capabilities already present in the narrow implementation.
 
 ## Runtime topology
 
@@ -88,14 +90,15 @@ It may use payload data to identify candidates, but final calculation uses curre
 
 ### GitHub installation client
 
-Creates/refreshes installation access tokens.
+The Phase 2 live harness can sign a short-lived RS256 App JWT from an environment-provided private key and exchange it for an installation token scoped to the controlled test repository. It can also accept an already minted installation token for diagnostics.
 
-Requirements:
+Production requirements remain:
 
 - cache only within token lifetime;
 - refresh on expiry/one justified 401 retry;
 - never assume fixed token format/length;
-- scope calls to the installation.
+- scope calls to the installation;
+- never persist or log the App private key, JWT, or installation token.
 
 ### Config loader
 
