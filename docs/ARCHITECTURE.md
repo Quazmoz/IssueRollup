@@ -1,235 +1,253 @@
 # Architecture
 
-## Architectural goal
+## Goal
 
-Keep the V1 calculation path stateless and deterministic. GitHub is the source of truth for:
+Keep rollup **calculation state** in GitHub while making webhook delivery handling production-safe.
 
-- hierarchy;
-- source values;
-- target values;
-- repository configuration;
-- installation scope.
-
-A database must not be required to decide the correct rollup.
+V1 has no product database containing a second copy of issue hierarchy or field values. A production deployment may use infrastructure state such as a durable queue, short-lived deduplication keys, and logs.
 
 ## Proposed stack
 
-Recommended initial implementation:
+Recommended:
 
 - TypeScript
 - current Node.js LTS
-- Octokit for GitHub REST/GraphQL access
-- a GitHub App framework such as Probot where it reduces authentication/webhook boilerplate
-- JSON-schema or equivalent runtime validation for repository config
-- Vitest or equivalent fast unit test runner
+- Octokit / GitHub App authentication library
+- lightweight HTTP framework or Probot
+- YAML parser in safe mode
+- Zod/JSON Schema for config and payload validation
+- Vitest
+- durable queue appropriate to the host for production
 
-This is a recommended implementation, not a product requirement. Any stack change must preserve the contracts below.
-
-## Logical components
+## Runtime topology
 
 ~~~text
-GitHub webhook
-      |
-      v
-Webhook verifier
-      |
-      v
-Event router
-      |
-      +----> affected issue/parent resolver
-                       |
-                       v
-                Config loader
-                       |
-                       v
-                Field resolver
-                       |
-                       v
-                Hierarchy reader
-                       |
-                       v
-                Rollup engine
-                       |
-                       v
-                Write planner
-                       |
-                       v
-                 GitHub API
-                       |
-                       +----> optional ancestor propagation
+GitHub
+   |
+   | webhook
+   v
+Ingress
+  - raw-body HMAC verification
+  - event/action allowlist
+  - basic payload validation
+  - enqueue
+   |
+   | durable work item
+   v
+Worker
+  - installation token
+  - find parent
+  - load parent repo config
+  - resolve fields
+  - list children
+  - validate same-repo boundary
+  - read current values
+  - calculate
+  - create/update/delete target
+  - propagate ancestor
 ~~~
 
-## Component contracts
+Ingress should do no GitHub fan-out work before acknowledgement other than what is necessary to validate and durably accept the delivery.
 
-### Webhook verifier
+## Core components
+
+### Webhook ingress
 
 Responsibilities:
 
-- verify GitHub webhook signature against the configured secret;
-- reject malformed or unauthenticated requests;
-- extract event name, action, installation, repository, and delivery ID;
-- pass only normalized event metadata downstream.
+- preserve raw request body;
+- verify `X-Hub-Signature-256`;
+- inspect `X-GitHub-Event`;
+- validate supported action;
+- capture `X-GitHub-Delivery`;
+- validate installation/repository/issue identity;
+- durably enqueue;
+- respond 2XX within 10 seconds after successful acceptance.
 
-It does not perform rollup math.
+If durable acceptance fails, do not claim success.
 
-### Event router
+### Event normalizer/router
 
-Maps webhook event/action pairs into one or more recalculation candidates.
+Maps external event/action payloads into bounded recalculation candidates.
 
-It must be conservative: redundant recalculation is acceptable; missing a necessary recalculation is not.
+It may use payload data to identify candidates, but final calculation uses current API state.
+
+### GitHub installation client
+
+Creates/refreshes installation access tokens.
+
+Requirements:
+
+- cache only within token lifetime;
+- refresh on expiry/one justified 401 retry;
+- never assume fixed token format/length;
+- scope calls to the installation.
 
 ### Config loader
 
-Loads `.github/issuerollup.yml` from the repository's default branch for V1.
+Loads:
 
-Responsibilities:
+~~~text
+.github/issuerollup.yml
+~~~
 
-- parse YAML;
-- validate schema;
-- reject unknown/unsafe combinations;
-- return normalized rules;
-- clearly distinguish no-config from invalid-config.
+from the parent repository's default branch.
 
-Potential later optimization: ETag/content-SHA cache. Correctness must not require the cache.
+Distinguishes:
 
-### Field resolver
+- absent config -> disabled;
+- invalid config -> configuration error;
+- valid config -> normalized rules.
 
-Converts human-readable configured field names into GitHub field IDs and metadata.
+### Field catalog
 
-Internally the engine should use IDs once resolution succeeds.
+Loads organization Issue Field definitions using `Issue Fields: read`.
 
-Validation:
+Returns both:
 
-- source exists;
-- target exists;
-- V1 source type is number;
-- V1 target type is number;
-- source and target do not form a prohibited self/cycle condition;
-- names are unambiguous in their scope.
+- REST database ID;
+- GraphQL node ID.
 
-### GitHub adapter
+Validates V1 numeric types.
 
-A narrow interface around GitHub.
+### Hierarchy adapter
 
-Expected operations:
+Reads:
 
-- fetch repository configuration file;
-- get parent issue;
-- list direct sub-issues;
-- list/read Issue Field values for an issue;
-- resolve organization Issue Field metadata;
-- update one target Issue Field without disturbing others.
+- current parent;
+- direct sub-issues.
 
-GitHub response models must be translated into internal domain types at this boundary.
+Checks:
 
-### Rollup engine
+- same repository for every V1 edge;
+- pagination;
+- cycle/depth safety even if GitHub normally enforces a valid hierarchy.
 
-Pure business logic where possible.
+### Value adapter
+
+Reads current Issue Field values.
+
+Unset is represented explicitly, not as zero.
+
+### Rollup evaluator
+
+Pure code.
 
 Input:
 
 - normalized rule;
-- parent identity;
-- normalized child contributions;
-- current target value.
+- normalized direct-child contributions;
+- current target.
 
 Output:
 
-- computed value or explicit error;
-- diagnostics;
-- whether a write is necessary;
-- whether ancestor propagation may be necessary.
+- `WRITE(number)`;
+- `CLEAR`;
+- `NOOP`;
+- `FAIL(reason)`.
 
-The rollup engine must not perform HTTP calls.
+No network calls.
 
-### Write planner
+### Field writer
 
-Determines whether a GitHub write is necessary.
+V1 uses single-field GraphQL mutations:
 
-Rules:
+- create;
+- update;
+- delete.
 
-- no write when computed value equals current value;
-- no write on incomplete/failing calculation under fail-closed policy;
-- write only the configured target field;
-- prefer the API operation that mutates only intended field values.
+The writer never changes Issue Field definitions and never replaces the issue's complete field set.
 
 ### Propagation coordinator
 
-After a successful changed write, checks whether an ancestor depends on this issue and recalculates upward.
+After a changed target:
 
-Safety:
+- find ancestor;
+- load ancestor parent-repo config;
+- recalculate relevant rule;
+- stop on no parent/no change/hard failure/safety limit.
 
-- bounded maximum depth;
-- visited-issue guard;
-- no unbounded recursion;
-- same-state short circuit.
+### Reconciler
 
-## Statelessness
+Uses the same evaluator/writer but traverses bottom-up.
 
-Core V1 does not require persisted calculation state.
+Reconciliation exists because webhook delivery is not a durable event stream provided by GitHub.
 
-Webhook idempotency is achieved by recomputing current state and performing a write only if GitHub differs from the desired aggregate.
+## Derived values are caches, not authoritative inputs
 
-This means duplicate webhooks are naturally safe:
+Source values and hierarchy are authoritative user state.
 
-~~~text
-delivery A -> calculate 21 -> write 21
-delivery A again -> calculate 21 -> current is 21 -> no-op
-~~~
+Target values are materialized derived state.
 
-## Caching
+Normal event propagation may use a just-repaired child target to efficiently update its ancestor. Full reconciliation must traverse bottom-up and repair child parents before using their targets.
 
-Allowed caches:
+A manually edited/stale derived target must never be treated as unquestionable truth.
 
-- GitHub App installation token cache;
-- configuration by repository content SHA/ETag;
-- Issue Field metadata by organization;
-- short-lived parent/sub-issue reads within a single recalculation chain.
+## API split
 
-Caches are optimizations only. Stale cache data must not silently produce incorrect aggregates.
+REST:
+
+- repository/default-branch/config reads;
+- organization field definitions;
+- issue field values;
+- parent lookup;
+- sub-issue listing.
+
+GraphQL:
+
+- single-field create/update/delete derived target value.
+
+See `API_CONTRACT.md`.
 
 ## Concurrency
 
-Two child changes can arrive concurrently.
+Two events can target the same parent.
 
-Example:
+V1 relies on:
 
-~~~text
-Child A: 3 -> 5
-Child B: 4 -> 8
-~~~
+- reload current state;
+- deterministic evaluation;
+- compare-before-write;
+- narrow field mutations;
+- eventual convergence.
 
-Both handlers must re-read current GitHub values. A stale handler might calculate an intermediate value, but subsequent processing must converge to the current correct value.
+Optional per-parent queue serialization/coalescing may reduce thrash but is not required for correctness.
 
-For V1, convergence is more important than implementing a distributed lock. If real-world testing exposes write thrashing, introduce per-parent short-lived serialization without changing semantics.
+## Caching
 
-## API versioning
+Allowed optimization caches:
 
-Pin a supported GitHub API version in requests rather than relying on implicit defaults. Keep the version centralized.
+- installation tokens;
+- field catalog;
+- config by content SHA;
+- short-lived per-job hierarchy reads;
+- short-lived delivery dedupe keys.
+
+No cache is authoritative.
+
+## Same-repository V1 boundary
+
+Cross-repository hierarchy support is deferred.
+
+This removes an otherwise hard-to-prove completeness dependency on selected-repository installation scope and cross-repository webhook delivery.
+
+## API evolution
+
+REST version is centralized and pinned to `2026-03-10`.
+
+Before changing API version:
+
+1. read GitHub breaking-change notes;
+2. run adapter contract tests;
+3. run live integration tests;
+4. update `API_CONTRACT.md`.
 
 ## Extension points
 
-### Reducers
+- additional numeric reducers;
+- typed date/select reducers;
+- cross-repository hierarchy adapter after explicit validation;
+- Project V2 field adapter;
+- CLI/MCP query surface.
 
-Reducer interface should make these later additions straightforward:
-
-- average
-- min
-- max
-- count
-
-### Field adapters
-
-Keep field storage behind an adapter so a future Project V2 implementation can coexist:
-
-~~~text
-RollupEngine
-   |
-   +-- IssueFieldAdapter       V1
-   |
-   +-- ProjectV2FieldAdapter   later
-~~~
-
-### Reconciliation
-
-The same `recalculate(parent, rule)` path used by webhooks must be callable by recovery/reconciliation tooling. Do not create separate math paths.
+None are allowed to weaken the V1 field-write and fail-closed contracts.

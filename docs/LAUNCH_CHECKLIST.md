@@ -1,93 +1,119 @@
 # Launch and GitHub Developer Program Checklist
 
-This checklist separates what is required to prove the integration works from what is optional polish.
+## Contract complete
 
-## Before writing implementation code
+- [x] Problem documented.
+- [x] V1 same-repository boundary documented.
+- [x] API version pinned to 2026-03-10.
+- [x] REST/GraphQL responsibilities documented.
+- [x] Dangerous bulk field write paths prohibited.
+- [x] Organization Issue Fields read permission documented.
+- [x] Organization-owner installation consequence documented.
+- [x] 10-second webhook requirement documented.
+- [x] No-automatic-redelivery behavior documented.
+- [x] Reconciliation contract documented.
+- [x] Test/release gates documented.
 
-- [x] Public repository created.
-- [x] Product problem documented.
-- [x] V1 scope bounded.
-- [x] Rollup semantics documented.
-- [x] GitHub App permission model drafted.
-- [x] Webhook reliability strategy documented.
-- [x] Test strategy documented.
-- [ ] Decide initial implementation stack/ADR if different from TypeScript recommendation.
-- [ ] Decide open-source license.
-
-## GitHub App setup
+## GitHub App registration
 
 - [ ] Register GitHub App.
-- [ ] Set App homepage/repository URL.
-- [ ] Configure webhook URL.
-- [ ] Generate webhook secret.
-- [ ] Generate/store App private key securely.
-- [ ] Request Contents read.
-- [ ] Request Issues write.
-- [ ] Subscribe only to required `issues` and `sub_issues` events.
-- [ ] Install on controlled organization-owned test repository.
+- [ ] Set accurate homepage/source URL.
+- [ ] Configure HTTPS webhook URL.
+- [ ] Generate strong webhook secret.
+- [ ] Generate/store App private key.
+- [ ] Repository Metadata: read.
+- [ ] Repository Contents: read.
+- [ ] Repository Issues: write.
+- [ ] Organization Issue Fields: read.
+- [ ] No Issue Fields write permission.
+- [ ] Subscribe to `issues`.
+- [ ] Subscribe to `sub_issues`.
+- [ ] Install through organization owner on controlled org repo.
 
-## Minimum working integration
+## Controlled GitHub fixtures
 
-- [ ] Public HTTPS webhook receives GitHub event.
-- [ ] Signature verification passes.
-- [ ] Installation token is created.
-- [ ] Repository config is read through GitHub API.
-- [ ] Numeric source/target fields resolve.
-- [ ] Sub-issues are listed.
-- [ ] Child Issue Field values are read.
-- [ ] Sum is calculated.
-- [ ] Parent target Issue Field is updated.
-- [ ] Duplicate processing produces a no-op.
-- [ ] Relevant action is visible in logs without secrets.
+Create:
 
-At this point IssueRollup is a real integration in development.
+- [ ] numeric `Effort` field;
+- [ ] numeric `Total Effort` field;
+- [ ] unrelated fields for preservation tests;
+- [ ] parent issue;
+- [ ] two children;
+- [ ] nested parent/children;
+- [ ] optional second repository for cross-repo rejection test.
 
-## Reliability gate
+## First real API path
 
-- [ ] Handle field clear.
-- [ ] Handle child add/remove.
-- [ ] Handle last-child removal.
-- [ ] Handle nested parent propagation.
-- [ ] Handle inaccessible child safely.
-- [ ] Handle pagination.
-- [ ] Add retry/backoff for safe transient failures.
-- [ ] Add manual reconciliation.
-- [ ] Complete integration test matrix.
+- [ ] Installation token works.
+- [ ] Org Issue Fields list works.
+- [ ] Config fetch works.
+- [ ] Parent lookup works.
+- [ ] Sub-issue listing works.
+- [ ] Child values read.
+- [ ] GraphQL create target works.
+- [ ] GraphQL update target works.
+- [ ] GraphQL delete target works.
+- [ ] Unrelated fields preserved.
+- [ ] 3 + 5 -> 8 demo works.
+
+At this point IssueRollup is a genuine integration in development.
+
+## Webhook/reliability MVP
+
+- [ ] HMAC-SHA256 verification.
+- [ ] Durable production enqueue.
+- [ ] 2XX inside 10 seconds.
+- [ ] `X-GitHub-Delivery` captured.
+- [ ] Live `issues.field_added` fixture.
+- [ ] Live `issues.field_removed` fixture.
+- [ ] Live relevant `sub_issues` fixtures.
+- [ ] Unknown action ignored safely.
+- [ ] Duplicate job converges.
+- [ ] Out-of-order jobs converge.
+- [ ] Retry/rate-limit classification.
+- [ ] Reconciliation path.
+- [ ] Last-child clear.
+- [ ] Nested propagation.
+- [ ] Cross-repository edge rejected.
 
 ## Public project hygiene
 
-- [ ] Add LICENSE.
-- [ ] Add CONTRIBUTING.md if accepting contributions.
-- [ ] Add SECURITY.md.
-- [ ] Add privacy/data-handling statement.
-- [ ] Add setup/install documentation.
-- [ ] Add example config.
-- [ ] Add architecture diagram if useful.
-- [ ] Add CI.
-- [ ] Enable dependency update/security tooling.
-- [ ] Provide a valid public support email.
+- [ ] LICENSE.
+- [ ] SECURITY.md.
+- [ ] CONTRIBUTING.md if contributions are accepted.
+- [ ] Setup/install guide.
+- [ ] Privacy/data-handling statement.
+- [ ] Deployment guide.
+- [ ] Example config.
+- [ ] CI.
+- [ ] Dependency/security automation.
+- [ ] Valid monitored support email.
 
 ## GitHub Developer Program
 
-GitHub currently permits an integration to be in **production or development**.
+GitHub currently documents two relevant membership requirements:
+
+- an integration in production **or development** using the GitHub API;
+- a support email for GitHub users.
 
 Before applying:
 
-- [ ] At least one end-to-end GitHub API path genuinely works.
-- [ ] GitHub App exists and is associated with IssueRollup.
-- [ ] Repository accurately describes current development status.
-- [ ] Support email is published and monitored.
-- [ ] Application description is factual and does not imply production adoption that does not exist.
+- [ ] End-to-end API-backed path works.
+- [ ] GitHub App exists.
+- [ ] Repo accurately says development status.
+- [ ] Support email is public and monitored.
+- [ ] Application description makes no unverified adoption/production claims.
 
-Current program reference:
+Reference:
 
 https://docs.github.com/en/integrations/concepts/github-developer-program
 
-## Later, not required for Developer Program application
+## Not required before applying
 
-- [ ] GitHub Marketplace listing.
-- [ ] External users.
-- [ ] Hosted dashboard.
-- [ ] Paid plan.
-- [ ] Project V2 adapter.
-- [ ] Multiple reducers.
+- GitHub Marketplace listing.
+- External users.
+- Revenue.
+- Dashboard.
+- Multiple reducers.
+- Cross-repository support.
+- Project V2 adapter.

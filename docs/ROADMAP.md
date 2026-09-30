@@ -1,135 +1,147 @@
 # Roadmap
 
-The roadmap is deliberately ordered to prevent IssueRollup from becoming a generic project-management platform before the core primitive is reliable.
-
-## Phase 0 — Product contract
+## Phase 0 — Contract hardening
 
 Status: **current**
 
-- public repository;
+Complete:
+
 - PRD;
+- architecture;
+- API contract;
+- event-routing contract;
 - rollup semantics;
-- configuration schema;
-- GitHub App permission model;
-- webhook reliability contract;
-- security/privacy contract;
-- test plan;
-- competitive/platform research.
+- config contract;
+- permission model;
+- webhook reliability;
+- security/privacy;
+- test strategy;
+- research;
+- Developer Program checklist.
 
 Exit:
 
-- no unresolved ambiguity blocks implementation of numeric sum.
+- implementation can begin without guessing API semantics.
 
-## Phase 1 — Vertical slice
-
-Goal: one real end-to-end rollup.
+## Phase 1 — Local vertical slice
 
 Build:
 
-- TypeScript service skeleton;
-- GitHub App auth;
-- webhook verification;
-- config loader;
-- field resolver;
-- sub-issue reader;
-- numeric value reader;
-- sum reducer;
-- target updater;
-- structured logs.
+- TypeScript skeleton;
+- config schema/parser;
+- pure sum evaluator;
+- GitHub adapter interfaces;
+- webhook signature verification;
+- normalized work item;
+- structured logging.
 
-Demo:
+No production hosting assumptions beyond interfaces.
+
+## Phase 2 — Live GitHub App vertical slice
+
+Register/install App with:
+
+- Metadata read;
+- Contents read;
+- Issues write;
+- organization Issue Fields read.
+
+Prove:
 
 ~~~text
-Child values 3 + 5
-        |
-        v
-Parent Total Effort becomes 8
+3 + 5 -> 8
 ~~~
 
-Exit:
+using real Issue Fields and sub-issues in one organization repository.
 
-- works against a real organization-owned test repository.
+Also prove GraphQL create/update/delete preserve unrelated fields.
 
-## Phase 2 — Reliability MVP
+This is the earliest point at which IssueRollup is unquestionably a working GitHub API integration in development.
 
-Build:
+## Phase 3 — Reliability MVP
 
-- `field_removed`;
-- sub-issue relationship event handling;
+Add:
+
+- production queue;
+- field_removed;
+- hierarchy events;
 - nested propagation;
-- last-child cleanup;
-- fail-closed inaccessible children;
-- bounded retries;
-- pagination;
-- reconciliation command/endpoint;
-- webhook fixtures;
-- integration tests.
+- last-child clear;
+- retries/rate limits;
+- reconciliation;
+- live webhook fixtures;
+- failure injection;
+- selected-repository installation test.
 
-Exit:
+## Phase 4 — Public developer release
 
-- all MVP tests in TEST_STRATEGY pass.
-
-## Phase 3 — Public developer release
-
-- finalize App name/listing;
 - setup guide;
-- valid support email;
 - privacy statement;
 - SECURITY.md;
-- license decision;
-- sample repository/config;
-- deployment documentation;
-- public GitHub App install path if desired;
-- apply to GitHub Developer Program once a genuine API-backed development integration is operating.
+- LICENSE;
+- support email;
+- public install path if desired;
+- sample/test repository;
+- deployment docs;
+- CI/security automation;
+- Developer Program application.
 
-## Phase 4 — Reducer expansion
+## Phase 5 — Numeric reducer expansion
 
-Only after V1 stability:
+After V1 stability:
 
 - average;
 - min;
 - max;
 - count.
 
-Each requires documented empty/missing semantics.
+Each gets explicit semantics/tests.
 
-## Phase 5 — Typed expansion
+## Phase 6 — Cross-repository hierarchy
+
+Only after a dedicated live matrix proves:
+
+- event delivery for child repository changes;
+- selected vs all-repository installation behavior;
+- visibility behavior;
+- completeness detection;
+- re-parenting behavior;
+- reconciliation across repositories.
+
+Do not enable merely because the REST response contains another repository.
+
+## Phase 7 — Typed reducers
 
 Potential:
 
 - date earliest/latest;
 - ordered single-select highest/lowest.
 
-Do not infer selection ordering from display order unless explicitly defined and stable.
+## Phase 8 — Project V2 adapter
 
-## Phase 6 — Project V2 adapter
+Separate field backend.
 
-Add an adapter for GitHub Project V2 custom fields.
+Requires its own:
 
-Goals:
+- permissions;
+- webhook contract;
+- API stability review;
+- preservation tests.
 
-- support teams whose planning metadata remains Project-scoped;
-- retain the same RollupEngine;
-- avoid duplicating reducer logic.
+## Phase 9 — Optional interfaces
 
-This phase may require different permissions/events and must get its own threat/reliability review.
-
-## Phase 7 — Optional developer interfaces
-
-Only if demand exists:
+Only with demand:
 
 - CLI;
 - MCP read/query tools;
-- repository-wide dry-run report;
-- lightweight status endpoint;
+- dry-run report;
 - metrics export.
 
-## Explicitly not on the roadmap without demand
+## Explicitly not planned without evidence
 
-- standalone project-management dashboard;
+- project-management dashboard;
 - AI prioritization;
 - agent orchestration;
+- arbitrary formulas/code;
 - billing platform;
-- Jira/Linear replacement;
-- arbitrary formulas/code execution;
-- general workflow automation engine.
+- Jira/Linear replacement.

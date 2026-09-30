@@ -1,138 +1,131 @@
 # GitHub App Contract
 
-## Why a GitHub App
+## App model
 
-IssueRollup should be installed as a GitHub App rather than requiring users to create personal access tokens.
+IssueRollup is a GitHub App.
 
-Benefits:
+Normal operation uses installation access tokens and GitHub-delivered webhooks. User OAuth authorization is not required for the V1 service path.
 
-- scoped repository installation;
-- installation tokens;
-- explicit permissions;
-- native webhooks;
-- revocable access;
-- clear identity for writes;
-- strong fit with GitHub's developer ecosystem.
+## Required permissions
 
-## Required V1 capabilities
+### Repository
 
-The App needs to:
+| Permission | Level | Why |
+|---|---:|---|
+| Metadata | Read | Repository identity/basic App access |
+| Contents | Read | Read `.github/issuerollup.yml` from default branch |
+| Issues | Write | Read issue hierarchy/values and mutate derived Issue Field values |
 
-- receive issue and sub-issue events;
-- read repository metadata;
-- read `.github/issuerollup.yml`;
-- read issue hierarchy;
-- read Issue Field values;
-- write configured target Issue Field values.
+`Issues: write` subsumes the read access needed by parent/sub-issue and Issue Field-value endpoints.
 
-## Permission design
+### Organization
 
-Start from least privilege and validate exact GitHub App settings against the APIs used by implementation.
+| Permission | Level | Why |
+|---|---:|---|
+| Issue Fields | Read | Resolve configured names and numeric field metadata, including unset targets |
 
-Expected repository permissions:
+Do **not** request `Issue Fields: write`.
 
-- **Metadata: read** — implicit/basic repository metadata.
-- **Contents: read** — load `.github/issuerollup.yml`.
-- **Issues: write** — read issues/sub-issues and update Issue Field values.
+## Installation consequence
 
-Do not request:
+GitHub documents that repository admins can install an App themselves only when the App requests no organization permissions (and no repository administration permission).
 
-- administration;
-- actions;
-- checks;
-- deployments;
-- secrets;
-- members;
-- pull requests;
-- workflows
+Because IssueRollup requests organization-level `Issue Fields: read`, an organization owner must approve/install it.
 
-unless a later feature has a documented reason.
+Document this clearly in setup UX.
 
-## Webhook subscriptions
+## Repository selection
 
-V1 expects:
+Users may install on:
 
-- `issues`
-  - `field_added`
-  - `field_removed`
-- `sub_issues`
-  - relevant parent/sub-issue relationship actions
+- all repositories; or
+- selected repositories.
 
-Do not subscribe to unrelated high-volume events.
+V1's supported rollup hierarchy must remain within one repository, so selected-repository installation is compatible with the correctness contract.
 
-## Installation scope
+## Webhook subscription
 
-Users should be able to install IssueRollup on selected repositories instead of requiring all repositories.
+Subscribe only to:
 
-Because cross-repository sub-issues are possible, a hierarchy may reference a child outside the App's installation scope.
+- `issues`;
+- `sub_issues`.
 
-V1 behavior in that case is fail-closed for the affected rollup.
+The App has sufficient event access through the declared Issues permission.
 
-## Issue Fields constraint
+IssueRollup handles only its allowlisted actions and ignores/logs unrelated `issues` actions.
 
-Organization-level Issue Fields are available for organization-owned repositories with the feature enabled. V1 therefore targets those repositories.
+## Field-definition ownership
 
-The IssueRollup code repository itself may live under a personal account; that does not change the target repositories on which the installed App operates.
+IssueRollup reads organization Issue Field definitions but never modifies them.
+
+Users create and manage:
+
+- Effort;
+- Total Effort;
+- or equivalent source/target fields.
 
 ## Authentication
 
-Server-side flow:
+1. Receive verified GitHub App webhook with installation ID.
+2. Create/reuse installation access token.
+3. Use installation token with REST/GraphQL.
+4. Refresh at/near expiry.
+5. Never expose installation token to client code.
 
-1. Verify webhook with App webhook secret.
-2. Read installation ID from verified payload.
-3. Create/obtain installation access token.
-4. Call GitHub API only within installation scope.
-5. Never expose the installation token to client-side code.
+GitHub currently documents installation-token lifetime as one hour.
 
-## Private key handling
+Do not assume a fixed token length or prefix.
 
-GitHub App private key requirements:
+## REST version
 
-- store only in a secret manager/environment secret;
-- never commit;
-- never log;
-- support rotation;
-- fail startup if malformed/missing in environments that require GitHub access.
+Pin:
 
-## Webhook secret handling
+~~~text
+X-GitHub-Api-Version: 2026-03-10
+~~~
 
-- separate from private key;
-- verify raw request bytes exactly as required by GitHub;
-- constant-time signature comparison through a vetted library;
-- reject before JSON business processing when verification fails.
+for all REST calls.
 
-## API endpoints central to V1
+## App secrets
 
-Conceptually:
+### Private key
 
-- list parent/sub-issue relationships;
-- list sub-issues;
-- list Issue Field values for each issue;
-- resolve organization Issue Field metadata;
-- update/add the configured Issue Field value;
-- read repository content for configuration.
+- secret manager/environment only;
+- never in repository;
+- never logged;
+- rotation supported.
 
-Pin an explicit supported GitHub REST API version in the client.
+### Webhook secret
 
-## Write strategy
+- independent secret;
+- validate raw bytes with `X-Hub-Signature-256`;
+- constant-time comparison via vetted crypto/library.
 
-Avoid any operation that replaces the entire set of Issue Field values unless the implementation can prove it preserves unrelated values.
+## Same-repository V1 guarantee
 
-Prefer the narrowest operation that adds/updates the configured target field only.
+GitHub's sub-issue APIs can represent cross-repository relationships under the same repository owner.
 
-## User-facing App identity
+IssueRollup V1 refuses cross-repository edges.
 
-Before public installation:
+This is intentional: selected-repository installations and child-repository webhook delivery make a general cross-repo completeness guarantee a separate integration problem.
 
-- App name finalized;
-- description clearly says what data is changed;
-- homepage points to repository or project site;
-- privacy statement explains processing;
-- support contact is valid;
-- setup URL/documentation is available.
+## App listing/setup information
 
-## Developer Program alignment
+Before public install:
 
-GitHub's current Developer Program requirement allows an integration to be in production **or development** as long as it uses the GitHub API and provides a support email.
+- accurate development/production status;
+- source repository;
+- setup instructions;
+- permissions explanation;
+- privacy/data handling;
+- support email;
+- security-reporting route.
 
-IssueRollup should apply only after at least one genuine API-backed end-to-end path exists, even though a production release is not required.
+## Developer Program
+
+GitHub's current Developer Program documentation states that membership is open to developers/companies with:
+
+- an integration in production **or development** using the GitHub API;
+- a support email for GitHub users.
+
+IssueRollup should apply after the first real end-to-end API path works and the support contact exists. Marketplace publication is not a documented prerequisite.

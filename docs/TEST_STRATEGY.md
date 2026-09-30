@@ -1,174 +1,206 @@
 # Test Strategy
 
-## Testing goal
+## Goal
 
-Most rollup behavior should be provable without calling GitHub.
+Prove the dangerous parts—GitHub authorization, event routing, and field mutation—rather than only testing arithmetic.
 
-The architecture must keep calculation logic pure enough to test exhaustively.
+## 1. Pure unit tests
 
-## Test pyramid
+### Reducer
 
-### Unit tests
+- integers;
+- decimals;
+- zero;
+- negative finite numbers;
+- empty contribution set;
+- missing values;
+- NaN/infinity rejected;
+- order independence.
 
-Largest layer.
+### Write planner
+
+- target absent -> CREATE;
+- target differs -> UPDATE;
+- same -> NOOP;
+- no contributions/leaf cleanup -> CLEAR;
+- calculation error -> no write.
+
+### Nested semantics
+
+- leaf contribution;
+- child-parent uses repaired derived target;
+- post-order reconciliation;
+- cycle guard;
+- depth guard.
+
+## 2. Config/schema tests
+
+- minimal valid;
+- full valid;
+- wrong version;
+- unknown keys;
+- duplicate names;
+- duplicate target ownership;
+- source == target;
+- missing fields;
+- non-number fields;
+- unsupported reducer/policy;
+- rule count limit;
+- malicious YAML constructs;
+- oversized config.
+
+## 3. Webhook tests
+
+Use exact raw-byte signature fixtures.
 
 Cover:
 
-- sum reducer;
-- effective child value resolution;
-- missing values;
-- empty set;
-- decimals;
-- negative numbers if allowed by GitHub field;
-- zero;
-- large numeric values within supported semantics;
-- unchanged target -> no-op;
-- incomplete child -> fail;
-- nested contribution selection;
-- cycle guard;
-- depth guard;
-- multi-rule independence;
-- invalid config.
-
-### Configuration tests
-
-Schema fixtures:
-
-- minimal valid config;
-- full valid V1 config;
-- unsupported version;
-- duplicate names;
-- duplicate/conflicting targets;
-- missing fields;
-- wrong types;
-- unsupported reducer;
-- source == target;
-- unknown policy.
-
-### Webhook fixture tests
-
-Store sanitized representative payload fixtures for:
-
-- `issues.field_added`;
-- `issues.field_removed`;
-- sub-issue added;
-- sub-issue removed;
-- parent changed where applicable;
-- irrelevant issue events;
+- valid SHA-256 signature;
 - invalid signature;
-- missing installation;
-- duplicate delivery.
+- body tampering;
+- missing signature;
+- supported `issues` field actions;
+- irrelevant `issues` action;
+- supported `sub_issues` actions captured from live GitHub;
+- unknown future action;
+- duplicate delivery ID;
+- malformed installation/repository identity.
 
-Test that routing produces the correct recalculation candidates.
+Verify ingress can enqueue and respond inside the 10-second requirement.
 
-### GitHub adapter contract tests
+## 4. Event-routing tests
 
-Mock HTTP at the API boundary and verify:
+- child source change -> parent rule;
+- nested child target change -> ancestor rule;
+- manual derived target edit -> self repair;
+- self-generated target event not globally discarded;
+- relation add -> parent;
+- relation remove -> old parent;
+- re-parent -> both sides when known;
+- rule loaded from parent repository;
+- cross-repository edge -> fail/no write.
 
-- explicit API version header;
-- installation auth used;
-- pagination;
-- field name -> ID resolution;
-- safe single-target-field update;
-- 403/404/422 classification;
-- rate-limit handling.
+## 5. REST adapter tests
 
-### Integration tests
+Pin request headers:
 
-Use a dedicated GitHub organization/repository or controlled test fixture environment.
-
-Required scenarios before MVP:
-
-1. Two leaf children sum into parent.
-2. Child value edit updates parent.
-3. Child field clear updates parent according to missing policy.
-4. Add sub-issue updates parent.
-5. Remove sub-issue updates parent.
-6. Remove last child clears stale rollup safely.
-7. Nested hierarchy propagates bottom-up.
-8. Manual parent target edit is repaired on next recalculation.
-9. Duplicate webhook produces no incorrect duplicate effect.
-10. Out-of-order events converge.
-11. Child outside installation scope fails closed.
-12. Invalid config produces no mutation.
-13. Unrelated Issue Fields survive every write.
-
-## Golden hierarchy fixtures
-
-Maintain human-readable fixtures.
-
-Example:
-
-~~~yaml
-parent:
-  target_before: 7
-  children:
-    - source: 3
-    - source: 5
-
-expected:
-  target_after: 8
+~~~text
+Accept: application/vnd.github+json
+X-GitHub-Api-Version: 2026-03-10
 ~~~
 
-Nested:
+Verify:
 
-~~~yaml
-root:
-  children:
-    - parent:
-        target: 8
-        children:
-          - source: 3
-          - source: 5
-    - source: 2
+- org field listing;
+- config fetch on default branch;
+- parent lookup;
+- sub-issue pagination;
+- field-value pagination;
+- 401 refresh classification;
+- 403 classification;
+- 404 contextual handling;
+- 410 handling;
+- 422 nonretry;
+- 5xx retry;
+- rate-limit headers honored.
 
-expected_root: 10
-~~~
+## 6. GraphQL writer tests
 
-## Property-style tests
+Mock/contract test:
 
-Useful invariants:
+- create one number field value;
+- update one number field value;
+- delete one number field value;
+- unrelated fields preserved;
+- no bulk-set mutation/path introduced accidentally;
+- GraphQL error array parsed and classified.
 
-- sum result independent of child ordering;
-- duplicate child values do not mutate source data;
-- recomputation is idempotent;
-- adding a numeric child of value X changes sum by X;
-- removing that same child restores prior sum;
-- no failure result emits a write plan under fail-closed policy.
+## 7. Live GitHub App contract suite
 
-## Security tests
+Use a controlled organization-owned repository.
 
-- bad webhook signature rejected;
-- modified body after signing rejected;
-- secrets redacted from logs;
-- malicious YAML tags/constructs rejected;
-- huge config rejected by size/rule limits;
-- unexpected event action ignored;
-- arbitrary URL/string cannot cause outbound request.
+Required permissions must match production App settings.
 
-## Failure injection
+### Field catalog
+
+- `Issue Fields: read` lists target/source definitions;
+- numeric types and node IDs resolve.
+
+### Basic rollup
+
+- child A = 3;
+- child B = 5;
+- parent becomes 8.
+
+### Mutation safety
+
+Give parent unrelated fields:
+
+- Priority;
+- Owner text;
+- Target Date.
+
+After create/update/delete of Total Effort, assert all unrelated values remain unchanged.
+
+### Field edit
+
+3 + 5 -> change 5 to 7 -> parent becomes 10.
+
+### Clear
+
+Clear one source -> parent follows missing-value semantics.
+
+### Relationship
+
+Add/remove sub-issue -> parent changes.
+
+### Last child
+
+Remove final child -> derived target removed.
+
+### Nested
+
+Root -> parent -> leaves; change leaf and verify intermediate then root.
+
+### Manual corruption
+
+Set intermediate target to 999 manually; reconciliation restores correct intermediate and root.
+
+### Cross-repository
+
+Create a child in another repository under the same owner if GitHub permits it. Verify V1 detects/rejects the edge and performs no derived write.
+
+### Installation scope
+
+If practical, test selected-repository installation to confirm the documented V1 same-repo guarantee.
+
+## 8. Reliability/failure injection
 
 Simulate:
 
-- GitHub 500;
-- timeout;
-- 403 inaccessible child;
-- 404 deleted child;
-- 422 field validation;
-- rate limiting;
-- config fetch failure.
+- queue unavailable;
+- worker crash before write;
+- worker crash after write;
+- duplicate job;
+- out-of-order jobs;
+- GitHub timeout;
+- 5xx;
+- secondary rate limit;
+- installation token expiry.
 
-Verify classification and retry behavior.
+Reconciliation must converge final state.
 
 ## Release gate
 
-Do not label the integration MVP-ready until:
+MVP is not complete until:
 
-- unit suite passes;
-- webhook fixtures pass;
-- adapter contract tests pass;
-- real GitHub App end-to-end test passes;
-- unrelated-field preservation is proven;
-- nested propagation is proven;
-- last-child removal behavior is proven;
-- incomplete access produces no misleading total.
+- all pure tests pass;
+- signature/event fixtures pass;
+- REST adapter tests pass;
+- GraphQL single-field preservation is proven live;
+- declared App permissions are sufficient live;
+- same-repository nested rollup passes;
+- cross-repository rejection passes;
+- last-child cleanup passes;
+- reconciliation repairs corruption;
+- no unrelated metadata is mutated.

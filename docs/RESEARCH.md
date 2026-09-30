@@ -1,109 +1,166 @@
 # Research and Platform Rationale
 
-## Why this project exists
+Last reviewed: 2026-09-30
 
-IssueRollup targets a narrow missing capability between two GitHub primitives:
+## Problem evidence
 
-1. parent/sub-issue hierarchy;
-2. structured Issue Fields / project planning fields.
-
-GitHub provides hierarchy and field storage, but users still resort to custom automation when they want a parent value derived from children.
-
-## User-demand signal
-
-A GitHub Community discussion from June 2026 asks how to automatically sum Estimate values from sub-issues into the parent. The answer describes no native custom-field aggregation and points toward custom API/Actions automation. A follow-up user expresses interest in using such a solution.
+A June 2026 GitHub Community discussion asks how to sum a numeric Estimate field from sub-issues into the parent. The response describes the absence of native custom-field aggregation and recommends custom API/Actions automation.
 
 Reference:
 
 - https://github.com/orgs/community/discussions/200259
 
-This is a small signal, not proof of a large commercial market. It is enough to establish that the problem is real and not purely hypothetical.
+This proves a real workflow gap, not a large-market claim.
 
-## GitHub platform support
+## Issue Fields
 
-### Issue Field values API
+GitHub documents organization-level Issue Fields as typed metadata shared across an organization's issues and projects.
 
-GitHub exposes REST endpoints to list and manage Issue Field values for issues.
+Current constraints relevant to IssueRollup:
 
-Reference:
+- unavailable for user-owned repositories;
+- issues only, not pull requests;
+- up to 25 fields per organization;
+- number fields allow decimals;
+- values can be read/set/cleared through REST and GraphQL.
 
-- https://docs.github.com/en/rest/issues/issue-field-values
+References:
 
-The API supports GitHub App installation tokens. Reading requires Issue access; writing field values requires write-level issue/pull-request permission and appropriate repository access.
-
-### Issue Field automation events
-
-GitHub documents that Issue Field changes trigger `issues` webhook/workflow events:
-
-- `field_added`
-- `field_removed`
-
-Payloads contain field information including previous/current value information.
-
-Reference:
-
+- https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/managing-issue-fields-in-your-organization
 - https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-and-managing-issue-fields
+- https://docs.github.com/en/rest/issues/issue-field-values
+- https://docs.github.com/en/rest/orgs/issue-fields
+- https://docs.github.com/en/graphql/reference/issues
 
-### Sub-issue API
+## Sub-issues
 
-GitHub exposes REST endpoints for parent/sub-issue relationships including listing sub-issues.
+GitHub currently documents:
 
-Reference:
+- up to 100 sub-issues per parent;
+- up to eight hierarchy levels;
+- REST endpoints for parent lookup and child listing;
+- GitHub App installation-token support with Issues read permission;
+- when adding through the REST API, a sub-issue must belong to the same repository owner as the parent.
 
+References:
+
+- https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-sub-issues
 - https://docs.github.com/en/rest/issues/sub-issues
-
-### Sub-issue webhooks
-
-GitHub Apps can subscribe to the `sub_issues` webhook event for hierarchy changes.
-
-Reference:
-
 - https://docs.github.com/en/webhooks/webhook-events-and-payloads
 
-## Important V1 constraint
+## Why V1 is same-repository only
 
-Organization Issue Fields apply to organization-owned repositories where the feature is available.
+GitHub can represent cross-repository sub-issues, but IssueRollup must remain correct under GitHub App installations restricted to selected repositories.
 
-This means V1 is not a universal solution for every personal repository.
+The documentation establishes repository-scoped installation access, but it does not by itself prove every visibility/event-completeness property IssueRollup would need to publish a cross-repository aggregate safely.
 
-A future Project V2 field adapter is a deliberate expansion path.
+Therefore V1:
 
-## Adjacent solutions
+- supports same-repository edges;
+- rejects observed cross-repository edges;
+- defers cross-repository support until a live matrix proves the contract.
 
-Existing tools demonstrate nearby needs:
+This is scope reduction for correctness, not a claim that GitHub cannot represent cross-repository sub-issues.
 
-- generic Issue/Project automation with GitHub Actions;
-- project activity/metrics tools;
-- custom `actions/github-script` recipes.
+## GitHub App permissions
 
-The differentiation for IssueRollup is intentionally narrow:
+Name-based configuration requires the organization field catalog.
 
-> A reusable, installable GitHub-native primitive for deterministic hierarchy rollups.
+Documented permissions:
 
-The product should not compete by becoming a full reporting dashboard.
+- `GET /orgs/{org}/issue-fields` -> organization `Issue Fields: read`;
+- hierarchy/value reads -> repository `Issues: read`;
+- Issue Field value writes -> repository `Issues: write`;
+- config -> repository `Contents: read`.
+
+Because the App requests an organization permission, organization-owner approval/install is required.
+
+References:
+
+- https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps
+- https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party
+
+## Safe field mutation
+
+GitHub's REST Issue Field-value API has a bulk `PUT` endpoint that replaces all existing values. The REST `POST` endpoint also documents that posting an empty array clears all existing field values.
+
+IssueRollup therefore avoids bulk replacement in V1.
+
+GitHub GraphQL exposes:
+
+- `createIssueFieldValue`;
+- `updateIssueFieldValue`;
+- `deleteIssueFieldValue`.
+
+Those mutations provide the narrow write model IssueRollup wants, subject to the live permission/preservation contract test.
+
+References:
+
+- https://docs.github.com/en/rest/issues/issue-field-values
+- https://docs.github.com/en/graphql/reference/issues
+
+## Webhook reliability
+
+GitHub recommends responding to webhook deliveries with 2XX within 10 seconds.
+
+GitHub does not automatically redeliver failed deliveries. Recent deliveries can currently be redelivered for the past three days.
+
+References:
+
+- https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
+- https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries
+- https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks
+- https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
+
+This is why IssueRollup needs:
+
+- fast durable intake;
+- idempotent workers;
+- reconciliation.
+
+## REST versioning
+
+GitHub's current supported REST API versions include `2026-03-10` and `2022-11-28`.
+
+IssueRollup pins `2026-03-10`.
+
+Reference:
+
+- https://docs.github.com/en/rest/about-the-rest-api/api-versions
+
+## Installation tokens
+
+GitHub currently documents:
+
+- REST and GraphQL support;
+- repository/permission scope limited by installation;
+- one-hour installation-token expiry;
+- evolving token representation, so clients must not assume a fixed string length.
+
+Reference:
+
+- https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation
 
 ## Native-feature risk
 
-GitHub may eventually add native rollup formulas.
+GitHub may eventually add rollup formulas.
 
-That risk is acceptable for this project because:
+That risk is acceptable:
 
-- the problem exists now;
-- the integration remains a legitimate open-source GitHub API contribution;
-- a focused implementation can be built without large sunk cost;
-- the same architecture can adapt to additional reducers or field backends if demand exists.
+- the gap exists today;
+- the implementation is intentionally small;
+- the project remains a real GitHub integration and open-source contribution;
+- expansion is optional rather than required to justify V1.
 
-Do not respond to native-feature risk by bloating V1.
+## Developer Program
 
-## Developer Program relevance
+GitHub currently states membership is open to individual developers and companies with:
 
-GitHub currently states that Developer Program membership is open to individual developers and companies with:
-
-- an integration in production **or development** using the GitHub API; and
-- a support email for GitHub users.
+- an integration in production **or development** using the GitHub API;
+- an email address where GitHub users can contact them for support.
 
 Reference:
 
 - https://docs.github.com/en/integrations/concepts/github-developer-program
 
-IssueRollup is designed to be a genuine API integration rather than a badge-only placeholder.
+IssueRollup should apply only after a real end-to-end API-backed development path exists and support contact is published.

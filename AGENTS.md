@@ -1,63 +1,94 @@
 # AGENTS.md
 
-This repository is IssueRollup, a deliberately small GitHub App for deterministic aggregation of GitHub Issue Field values across sub-issue hierarchies.
+IssueRollup is a deliberately small GitHub App for deterministic aggregation of GitHub Issue Field values across sub-issue hierarchies.
 
-## Source of truth
+## Read first
 
 Before changing behavior, read:
 
 1. `docs/PRD.md`
-2. `docs/ROLLUP_SEMANTICS.md`
-3. `docs/GITHUB_APP.md`
-4. `docs/WEBHOOKS_AND_RELIABILITY.md`
-5. `docs/SECURITY_AND_PRIVACY.md`
+2. `docs/API_CONTRACT.md`
+3. `docs/EVENT_ROUTING.md`
+4. `docs/ROLLUP_SEMANTICS.md`
+5. `docs/GITHUB_APP.md`
+6. `docs/WEBHOOKS_AND_RELIABILITY.md`
+7. `docs/SECURITY_AND_PRIVACY.md`
 
-If code and documentation disagree, do not silently redefine the product. Update the contract intentionally in the same change or preserve the documented behavior.
+The documented contracts are intentional. If code and docs conflict, do not silently redefine the product.
 
 ## Non-negotiable V1 boundaries
 
+- Organization-owned repositories only.
+- Same-repository rollup hierarchies only.
+- Numeric source and target Issue Fields only.
+- `sum` is the only V1 reducer.
 - No LLM dependency.
-- No database dependency for the core rollup path.
 - No dashboard.
 - No billing.
-- No Project V2 field support unless the V1 Issue Fields path is complete and well tested.
-- Numeric `sum` is the first reducer.
+- No Project V2 custom-field adapter.
+- No arbitrary formulas or executable repository configuration.
+- No product database is required for calculation state.
+- A production deployment may use a durable queue and short-lived deduplication storage.
 - Incorrect partial totals are worse than an explicit failure.
-- Webhook deliveries must be authenticated before processing.
-- Writes must be idempotent and must not create webhook loops.
+
+## GitHub API invariants
+
+- Pin REST requests to `2026-03-10`.
+- Send `Accept: application/vnd.github+json`.
+- Authenticate normal work as the GitHub App installation.
+- Installation access tokens are short-lived; never assume token length or format.
+- Resolve configured field names from the organization's Issue Fields API.
+- Use REST reads for field definitions, current values, parent relationships, and sub-issues.
+- Use single-field GraphQL mutations for create/update/delete of the derived target value.
+- Never use REST `PUT /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values`; it replaces all existing field values.
+- Never send an empty array to REST `POST .../issue-field-values`; GitHub documents that this clears all existing field values.
+- Never mutate Issue Field definitions.
 - Never overwrite unrelated Issue Fields.
-- Never use a whole-field-set replacement endpoint in a way that can erase fields IssueRollup does not own.
-- Never log GitHub App private keys, installation tokens, webhook secrets, or full authorization headers.
+
+## Webhook invariants
+
+- Validate `X-Hub-Signature-256` against the raw request body before processing.
+- Inspect `X-GitHub-Event` and the payload `action`; ignore unknown actions safely.
+- Preserve `X-GitHub-Delivery` in logs/jobs.
+- Do not assume `sender` is always a human.
+- Production ingress must return 2XX within GitHub's 10-second window.
+- Do not acknowledge production work before it is durably accepted for processing.
+- Treat every webhook as a signal to reload current state.
+- Do not depend on webhook delivery order.
+- Do not blindly discard IssueRollup's own target-field events; those can be relevant to ancestor propagation.
 
 ## Engineering expectations
 
-- Use TypeScript with strict type checking unless an ADR intentionally changes the stack.
-- Separate GitHub API adapters from pure rollup calculation logic.
-- Pure calculation functions should be exhaustively unit tested.
-- Treat GitHub payloads and repository configuration as untrusted input.
-- Every write path must support dry-run computation in tests.
-- Retry only operations that are safe to retry.
-- Preserve `X-GitHub-Delivery` in structured logs for debugging and idempotency analysis.
-- Prefer field IDs internally after resolving configured field names.
-- Produce actionable errors: repository, issue number, rule name, cause, and whether a retry is appropriate.
+- TypeScript with strict type checking unless an ADR intentionally changes the stack.
+- GitHub transport/adapters separated from pure calculation logic.
+- Runtime validation at every external boundary.
+- Repository YAML is untrusted declarative input.
+- Pure reducers and write planning are exhaustively unit tested.
+- All external calls have explicit timeout/error classification.
+- Retries are bounded and only used for retry-safe operations.
+- Logs contain repository, issue, rule, delivery ID, and decision, but no credentials.
+- Same-value calculations produce no write.
+- Reconciliation and webhook workers call the same calculation primitives.
 
-## Definition of done for the MVP
+## Definition of done for MVP
 
-The MVP is not complete until an installed GitHub App can:
+The MVP is complete only when an installed GitHub App can:
 
-1. receive and verify relevant GitHub webhooks;
-2. load and validate `.github/issuerollup.yml`;
-3. resolve a configured numeric source and target Issue Field;
-4. list a parent's sub-issues;
-5. read each usable child value;
-6. compute a deterministic sum;
-7. update only the configured target field;
-8. cascade correctly through a nested hierarchy;
-9. refuse misleading partial totals when child access is incomplete;
-10. survive duplicate/out-of-order webhook deliveries through idempotent recomputation;
-11. expose enough logs to diagnose a failed rollup;
-12. pass unit, contract, integration, and webhook fixture tests.
+1. verify a real GitHub webhook;
+2. durably accept work and acknowledge within 10 seconds in the production path;
+3. load and validate `.github/issuerollup.yml`;
+4. resolve source/target numeric Issue Fields by exact name;
+5. reject unsupported cross-repository hierarchy edges;
+6. list all direct sub-issues with pagination;
+7. read child Issue Field values;
+8. calculate a deterministic sum;
+9. create/update/delete only the configured derived field;
+10. preserve every unrelated Issue Field;
+11. propagate through a nested same-repository hierarchy;
+12. survive duplicate and out-of-order events through recomputation;
+13. repair state through reconciliation;
+14. pass live GitHub contract tests and the test matrix in `docs/TEST_STRATEGY.md`.
 
 ## Scope discipline
 
-If a proposed feature does not improve rollup correctness, installation, configuration, observability, or recovery, it probably belongs after V1.
+A proposed V1 feature should improve correctness, installation, configuration, observability, or recovery. Everything else waits.

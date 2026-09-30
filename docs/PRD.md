@@ -6,204 +6,259 @@
 
 ## Problem
 
-GitHub supports parent/sub-issue hierarchies and structured Issue Fields, but teams cannot natively calculate parent field values from their children. Common planning values such as effort, cost, points, or estimates therefore have to be recalculated manually or maintained with repository-specific Actions.
+GitHub supports parent/sub-issue hierarchies and structured organization-level Issue Fields, but it does not currently provide native aggregation of custom numeric values from child issues into parent issues.
 
-This produces stale totals and duplicate automation logic.
+Teams that model Effort, Points, Cost, or Estimate therefore maintain totals manually or build repository-specific automation.
 
 ## Product promise
 
-> Define a rollup once. Keep parent values synchronized automatically as child issue values and hierarchy relationships change.
+> Define a numeric rollup once. Keep the derived parent value synchronized with GitHub's current sub-issue state.
 
-IssueRollup should feel like a missing GitHub primitive, not a replacement project-management system.
+IssueRollup should behave like a missing GitHub primitive, not another project-management system.
 
-## Primary user
+## V1 target user
 
 A GitHub organization that:
 
-- uses sub-issues to decompose work;
-- uses numeric GitHub Issue Fields such as Effort, Points, Cost, or Estimate;
-- wants parent issues to expose a computed total;
-- prefers GitHub-native metadata over a separate planning database.
+- owns the target repository;
+- uses GitHub Issue Fields;
+- uses sub-issues in the same repository;
+- wants numeric parent totals;
+- can have an organization owner approve/install a GitHub App.
+
+## V1 support boundary
+
+Supported:
+
+- organization-owned repositories;
+- same-repository hierarchy edges;
+- up to GitHub's documented direct-child and nesting limits;
+- numeric source field;
+- numeric target field;
+- `sum`;
+- nested propagation.
+
+Explicitly unsupported in V1:
+
+- user-owned repositories, because Issue Fields are not available there;
+- parent/child edges spanning repositories;
+- parent/child edges spanning organizations;
+- pull-request field rollups, because Issue Fields apply to issues only;
+- Project V2 custom fields.
+
+If an unsupported hierarchy edge is observed, IssueRollup must refuse to write that rule.
 
 ## Jobs to be done
 
-### Core
+### Keep totals current
 
-When I change a child estimate, automatically update the parent total so I do not manually recalculate hierarchy totals.
+When a child estimate changes, update the parent total without manual arithmetic.
 
-### Hierarchy
+### Track hierarchy edits
 
-When I add, remove, or re-parent a sub-issue, recalculate affected parents so the rollup reflects the current tree.
+When a child is attached, detached, or re-parented, update affected parent totals.
 
-### Recovery
+### Recover
 
-When a webhook is delayed, duplicated, or missed, let me recompute from GitHub's current state rather than repairing values by hand.
+When a webhook is missed or processing fails, recompute from current GitHub state.
 
-### Trust
+### Trust the value
 
-When IssueRollup cannot see every child required for a correct aggregate, tell me the calculation is incomplete instead of publishing a plausible but wrong number.
+Never publish a partial total as if it were complete.
 
-## V1 functional requirements
+## Functional requirements
 
-### FR-1 Configuration
+### FR-1 Repository configuration
 
-IssueRollup reads repository configuration from `.github/issuerollup.yml`.
+Load `.github/issuerollup.yml` from the parent repository's default branch.
 
-A V1 rule identifies:
+The config is parent-scoped: for any parent being calculated, its repository defines the applicable rules.
 
-- stable rule name;
-- source Issue Field by name;
-- target Issue Field by name;
-- reducer (`sum` only in V1);
-- missing-value policy;
-- inaccessible-child policy.
+### FR-2 Field resolution
 
-### FR-2 GitHub App authentication
+Resolve configured field names through the organization Issue Fields API.
 
-IssueRollup operates using GitHub App installation tokens. No user's personal access token is required for normal operation.
+For every V1 rule:
 
-### FR-3 Event handling
+- source exists;
+- target exists;
+- both are `number`;
+- source and target are distinct;
+- target is not claimed by another rule.
 
-Relevant changes trigger recalculation:
+### FR-3 GitHub App authentication
 
-- source Issue Field set or updated;
-- source Issue Field cleared;
-- target values changed externally when ancestor totals can be affected;
-- sub-issue attached;
-- sub-issue detached;
-- parent relationship changed.
+Normal GitHub API work uses an installation access token.
 
-The event is a trigger, not the authoritative calculation input. The engine re-reads current GitHub state before writing.
+No user PAT is required.
 
-### FR-4 Child discovery
+### FR-4 Webhook ingestion
 
-For an affected parent, IssueRollup lists current direct sub-issues from GitHub.
+Relevant webhook families:
 
-### FR-5 Value resolution
+- `issues` for Issue Field set/update/clear events;
+- `sub_issues` for hierarchy changes.
 
-For each direct child, the engine resolves the child's effective numeric contribution according to the semantics contract.
+Ingress verifies the webhook and hands normalized work to the worker path.
 
-### FR-6 Calculation
+### FR-5 Authoritative reload
 
-V1 supports deterministic numeric summation.
+Webhook payload field values are hints for routing only.
 
-### FR-7 Write safety
+Before calculation, reload:
 
-IssueRollup updates only the target field it owns for the specific rule. It must not replace or clear unrelated issue field values.
+- current parent relationship;
+- current direct children;
+- current Issue Field values;
+- current repository configuration;
+- current field definitions as needed.
 
-### FR-8 Nested propagation
+### FR-6 Same-repository validation
 
-After a parent's computed target changes, IssueRollup determines whether the parent's parent is affected and continues upward until:
+Every direct child used by a V1 rollup must belong to the same repository as the parent.
 
-- there is no parent;
-- the calculated value does not change;
-- the configured maximum safety depth is reached; or
-- a hard calculation error occurs.
+If a child does not, fail the rule without writing.
 
-### FR-9 Partial access
+### FR-7 Calculation
 
-If a required child is inaccessible to the GitHub App, V1 fails closed by default and does not publish a new aggregate.
+The first reducer is numeric sum.
 
-### FR-10 Reconciliation
+For nested hierarchies, see `ROLLUP_SEMANTICS.md`.
 
-A manual or scheduled reconciliation path can recompute an issue or configured repository hierarchy from current GitHub state.
+### FR-8 Field-safe mutation
 
-The first implementation may expose this as an internal endpoint, CLI command, or GitHub-supported dispatch mechanism. The core requirement is deterministic recomputation, not a specific UI.
+IssueRollup owns only the configured target value on qualifying parent issues.
 
-### FR-11 Observability
+It must never replace the complete Issue Field value set on an issue.
 
-Each calculation produces structured diagnostics containing at minimum:
+### FR-9 Clear stale derived values
 
+When an issue ceases to qualify as a parent, or when a calculated hierarchy has no value under the rule semantics, remove the target value with a field-specific delete operation.
+
+### FR-10 Nested propagation
+
+After a derived value changes, recalculate ancestors as necessary.
+
+Propagation is bounded by:
+
+- GitHub's supported hierarchy;
+- an internal safety depth;
+- a visited-node set.
+
+### FR-11 Reconciliation
+
+Expose a deterministic recovery path.
+
+At minimum:
+
+- reconcile one parent;
+- reconcile one hierarchy bottom-up.
+
+Repository-wide discovery can follow after the core MVP.
+
+### FR-12 Diagnostics
+
+Every calculation result records:
+
+- delivery ID if webhook-triggered;
 - installation ID;
+- organization;
 - repository;
 - parent issue number;
 - rule name;
-- child count;
-- usable value count;
-- ignored missing count;
-- inaccessible count;
+- source field ID/name;
+- target field ID/name;
+- direct-child count;
+- contributing count;
+- missing count;
 - old target;
 - computed target;
-- write/no-write decision;
-- triggering delivery ID when applicable.
+- decision;
+- error classification if any.
 
-Secrets and tokens are excluded.
+Never log credentials.
 
-## V1 non-functional requirements
+## Non-functional requirements
 
 ### Correctness
 
-For the same GitHub state and configuration, IssueRollup must produce the same result.
+Same GitHub state + same config => same result.
 
 ### Idempotency
 
-Processing the same webhook multiple times must converge on the same GitHub state.
+Repeated processing converges and same-value calculations do not write.
 
 ### Event-order tolerance
 
-Correctness must not depend on webhook delivery order. Re-read authoritative state before calculating.
+Final correctness must not depend on delivery order.
 
 ### Least privilege
 
-Request only permissions required for webhook receipt, issue/sub-issue reads, configuration reads, and target field writes.
+GitHub App permissions must match `GITHUB_APP.md`.
 
-### Performance
+### API compatibility
 
-A normal direct-child recalculation should require no database and should complete with bounded GitHub API calls. Pagination must support GitHub's allowed sub-issue count.
+REST requests explicitly pin GitHub API version `2026-03-10`.
 
-### Availability
+### Webhook responsiveness
 
-Transient failures should not corrupt values. A later retry or reconciliation must safely converge state.
+Production ingress acknowledges successfully accepted deliveries within 10 seconds.
 
-## UX requirements
+### Recoverability
 
-The product should not require a dashboard for normal use.
+Because GitHub does not automatically retry failed webhook deliveries, reconciliation is a required correctness mechanism.
 
-The expected user workflow is:
+## User experience
 
-1. Install GitHub App.
-2. Grant access to selected repositories.
-3. Create/configure source and target Issue Fields in the organization.
-4. Commit `.github/issuerollup.yml`.
-5. Change child values normally in GitHub.
-6. See parent values update.
+Expected setup:
 
-Configuration errors should be explicit and actionable.
+1. Organization owner installs IssueRollup.
+2. App receives access to the target repository.
+3. Existing organization numeric fields are selected by name in `.github/issuerollup.yml`.
+4. User commits the config.
+5. User edits child values normally in GitHub.
+6. Parent derived values update automatically.
 
-## Out of scope for V1
+No dashboard is required.
 
-- creating arbitrary Issue Fields automatically;
-- Project V2 custom field adapter;
-- non-numeric reducers;
-- cross-organization rollups;
+## Out of scope
+
+- creating or modifying Issue Field definitions;
+- cross-repository rollups;
+- Project V2 field rollups;
+- nonnumeric reducers;
 - historical analytics;
-- forecasting;
-- LLM inference;
-- user-defined JavaScript expressions;
-- billing or commercial plans;
-- standalone project-management UI.
+- AI inference;
+- arbitrary expressions;
+- billing;
+- standalone planning UI.
 
 ## Success criteria
 
-Technical success:
+Technical:
 
-- end-to-end rollup works on a real organization-owned test repository;
-- nested hierarchy works;
-- duplicate webhook tests converge;
-- inaccessible child test fails safely;
-- config validation prevents dangerous rules;
-- no unrelated Issue Fields are modified.
+- live end-to-end test on an organization-owned repository;
+- source edit updates parent;
+- field clear updates parent;
+- child attach/detach updates parent;
+- nested propagation works;
+- last-child removal clears target;
+- cross-repository edge is refused;
+- duplicate/out-of-order events converge;
+- unrelated field values survive every mutation;
+- reconciliation repairs deliberately corrupted derived values.
 
-Product success:
+Product:
 
-- a new user can understand the README example without reading implementation code;
-- installation plus one YAML rule is sufficient to demonstrate value;
-- the integration is substantive enough to be used as the project's GitHub Developer Program integration.
+- README explains the value in under one minute;
+- one YAML rule is enough for the demo;
+- integration is genuinely using the GitHub API and GitHub App model;
+- docs accurately distinguish development status from production readiness.
 
-## Open product decisions
+## Open decisions
 
-- final hosting target;
-- public support email;
-- open-source license;
-- whether reconciliation is exposed first as CLI, endpoint, or workflow dispatch;
-- whether V1.1 adds `average/min/max/count` before the Project V2 adapter.
+- hosting provider;
+- durable queue implementation;
+- support email;
+- license;
+- first public installation distribution path.

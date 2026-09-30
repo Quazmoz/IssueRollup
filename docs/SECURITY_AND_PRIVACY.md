@@ -2,150 +2,180 @@
 
 ## Security posture
 
-IssueRollup mutates GitHub issue metadata, so correctness and least privilege matter more than feature breadth.
+IssueRollup has permission to mutate issue metadata. The primary risks are:
+
+- unauthorized webhook processing;
+- accidental broad field replacement;
+- overbroad GitHub App permissions;
+- credential leakage;
+- replay/resource amplification;
+- untrusted repository configuration.
 
 ## Data minimization
 
-V1 needs only data required to calculate rollups:
+Required GitHub data:
 
+- installation/account identity;
 - repository identity;
-- issue identity;
-- sub-issue relationships;
-- configured Issue Field names/IDs/types/values;
-- repository configuration;
-- installation metadata required for authentication.
+- issue IDs/numbers/node IDs;
+- parent/sub-issue relationships;
+- Issue Field definitions;
+- numeric Issue Field values;
+- fixed-path repository config.
 
-V1 does not need issue-body content for rollup calculation.
+Issue body/title content is not required for rollup calculation and should not be persisted for convenience.
 
-Avoid storing issue titles/bodies unless required for diagnostics, and prefer IDs/numbers in logs.
+## Storage
 
-## Persistent storage
+No product database is required for source-of-truth rollup state.
 
-Core V1 should not persist customer GitHub content.
+Infrastructure may persist:
 
-Expected persistent secrets/configuration are deployment-level:
+- queued work envelopes;
+- short-lived delivery dedupe keys;
+- bounded operational logs.
 
-- GitHub App ID/client metadata;
-- GitHub App private key;
-- webhook secret.
-
-Installation tokens are short-lived and should be cached only as needed.
+Document retention before public use.
 
 ## Webhook authenticity
 
-Never process an unverified webhook.
-
 Requirements:
 
-- preserve raw body needed for signature validation;
-- validate GitHub signature using a maintained library;
-- reject invalid signatures;
-- do not trust installation/repository IDs before verification.
+- secret configured;
+- raw body retained until validation;
+- `X-Hub-Signature-256` validated;
+- constant-time comparison;
+- invalid/missing signature rejected before enqueue.
+
+## Replay handling
+
+Use `X-GitHub-Delivery` as the delivery identity.
+
+A replay should at worst cause an idempotent recomputation, but production should also use bounded deduplication to avoid unnecessary API amplification.
+
+Legitimate GitHub redelivery reuses the same delivery ID, so dedupe logic must support controlled operator redelivery/reprocessing semantics.
 
 ## Authorization
 
-Every API call should use the installation associated with the verified event or an explicitly authorized reconciliation request.
+Every worker starts from a verified installation identity.
 
-Do not let caller-supplied repository names bypass installation scope.
+Do not allow an arbitrary request body to select:
 
-## Repository configuration is untrusted input
+- a different installation;
+- a repository outside installation scope;
+- arbitrary GraphQL operations.
 
-A repository contributor may be able to edit `.github/issuerollup.yml`.
+Reconciliation endpoints must be authenticated separately and map requested repositories back to an authorized installation.
 
-Therefore configuration must never:
+## GitHub App permissions
 
-- execute arbitrary code;
-- interpolate shell commands;
-- reference local filesystem paths;
-- provide arbitrary outbound URLs;
-- select arbitrary HTTP methods/endpoints.
+V1:
 
-Configuration is declarative only.
+- Metadata read;
+- Contents read;
+- Issues write;
+- organization Issue Fields read.
 
-## Webhook payloads are untrusted input
+No Issue Fields write.
 
-Validate:
+No repository administration.
 
-- required event fields;
-- numeric IDs;
-- repository identity;
-- action allowlist;
-- installation presence where required.
+No Actions/Checks/Secrets/Deployments permissions.
 
-Ignore unsupported actions safely.
+## Repository config is untrusted
+
+YAML must be parsed in safe mode and schema-validated.
+
+Reject:
+
+- executable YAML tags;
+- unknown keys;
+- excessive size;
+- excessive rule count;
+- arbitrary URLs;
+- code/expression injection;
+- path overrides.
 
 ## Field write safety
 
-The highest-risk product bug is deleting or overwriting unrelated GitHub metadata.
+The most dangerous data-integrity failure is replacing unrelated Issue Field values.
 
-Requirements:
+V1:
 
-- mutate only the configured target Issue Field;
-- test API semantics with integration fixtures;
-- never use broad replacement semantics without preserving unrelated fields;
-- compare desired/current target before writing.
+- uses single-field GraphQL create/update/delete mutations;
+- prohibits REST bulk replacement;
+- contract-tests preservation of unrelated fields;
+- compares desired/current before write.
 
-## Secret handling
+## Cross-repository safety
+
+V1 rejects cross-repository hierarchy edges.
+
+Do not compensate for a missing child by:
+
+- switching credentials;
+- using a maintainer PAT;
+- treating missing data as zero;
+- publishing a partial total.
+
+## Credentials
 
 Never log:
 
-- private key;
+- App private key;
 - webhook secret;
 - installation token;
-- OAuth secrets if added later;
-- raw Authorization header.
+- Authorization headers.
 
-Deployment must support secret rotation without source changes.
+Installation tokens expire and are refreshed rather than stored as durable credentials.
 
-## Cross-repository hierarchies
+Do not assume token string length/format.
 
-A parent may reference a child outside installation scope.
+## Denial-of-service / amplification controls
 
-Do not attempt privilege escalation or alternate credentials.
+Bound:
 
-Default behavior: fail the rollup as incomplete.
-
-## Denial-of-service and amplification
-
-A single field update can propagate through ancestors.
-
-Mitigations:
-
-- maximum hierarchy depth;
-- visited-node guard;
-- per-event calculation budget;
-- pagination bounds;
-- API timeout;
-- retry bounds.
-
-Configuration can contain multiple rules, so impose a reasonable maximum rule count in the schema before public release.
+- request body size;
+- config size;
+- rules per repo;
+- queue retries;
+- worker concurrency;
+- hierarchy depth;
+- child pagination;
+- per-job API call budget;
+- reconciliation concurrency.
 
 ## SSRF
 
-V1 configuration contains no outbound URL hooks. Do not add arbitrary callbacks/webhooks to V1.
+V1 config has no outbound URLs and no generic HTTP action.
+
+Keep it that way.
 
 ## Supply chain
 
-Before release:
+Before public release:
 
 - lock dependencies;
-- enable Dependabot/Renovate equivalent;
-- run dependency/security scanning;
-- pin GitHub Actions by immutable commit SHA where practical;
-- minimize production dependencies.
+- dependency update automation;
+- secret scanning;
+- code scanning where practical;
+- minimal production dependencies;
+- pin third-party Actions by immutable SHA where practical.
 
 ## Privacy statement
 
-Public App documentation should clearly state:
+Before public install, document:
 
-- what repository metadata is read;
-- what fields are written;
-- whether any content is stored;
-- retention for operational logs;
-- support/security contact.
+- data categories read;
+- data categories written;
+- infrastructure logs;
+- queue/log retention;
+- no sale/use for advertising;
+- support contact;
+- security contact.
 
 ## Security reporting
 
-Before broad public promotion add `SECURITY.md` with a private reporting channel.
+Add `SECURITY.md` before public promotion.
 
-Do not ask users to disclose GitHub tokens or private keys in public issues.
+Never request tokens/private keys in public issues.

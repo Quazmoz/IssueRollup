@@ -2,15 +2,13 @@
 
 ## Location
 
-V1 repository configuration:
-
 ~~~text
 .github/issuerollup.yml
 ~~~
 
-The default branch version is authoritative.
+The version on the parent repository's default branch is authoritative.
 
-## Minimal V1 example
+## Minimal V1 config
 
 ~~~yaml
 version: 1
@@ -22,7 +20,7 @@ rollups:
     reducer: sum
 ~~~
 
-## Full V1 shape
+## Full V1 config
 
 ~~~yaml
 version: 1
@@ -33,40 +31,35 @@ rollups:
     target_field: Total Effort
     reducer: sum
     missing_value: ignore
-    inaccessible_child: fail
 ~~~
 
-## Schema
+## Root schema
 
 ### version
 
 Required integer.
 
-V1 accepts only:
+Only:
 
 ~~~yaml
 version: 1
 ~~~
 
-Reject unsupported versions with an actionable error.
+is accepted by V1.
 
 ### rollups
 
 Required non-empty array.
 
-Each rule must have a unique `name`.
+Set a conservative implementation maximum (recommended: 16 rules per repository) and reject larger configs rather than allowing unbounded webhook fan-out.
+
+## Rule schema
 
 ### name
 
-Required string.
+Stable unique identifier.
 
-Requirements:
-
-- stable identifier;
-- repository-unique;
-- safe for structured logging.
-
-Recommended pattern:
+Recommended:
 
 ~~~text
 [a-z0-9][a-z0-9-_]{0,63}
@@ -74,133 +67,109 @@ Recommended pattern:
 
 ### source_field
 
-Required Issue Field name.
+Exact organization Issue Field name.
 
-V1 requires a numeric Issue Field.
+V1 requires `data_type: number`.
 
 ### target_field
 
-Required Issue Field name.
+Exact organization Issue Field name.
 
-V1 requires a numeric Issue Field.
-
-The implementation should resolve the name to an ID before calculation.
+V1 requires `data_type: number`.
 
 ### reducer
 
-V1:
+Only:
 
 ~~~yaml
 reducer: sum
 ~~~
 
-Unknown reducers are configuration errors.
-
 ### missing_value
 
-V1 default:
+V1 default/allowed value:
 
 ~~~yaml
 missing_value: ignore
 ~~~
 
-### inaccessible_child
-
-V1 default and initially only supported safe mode:
-
-~~~yaml
-inaccessible_child: fail
-~~~
-
-## Invalid configurations
-
-Reject at least:
-
-- missing `version`;
-- unsupported version;
-- no rollup rules;
-- duplicate rule names;
-- source field not found;
-- target field not found;
-- non-number source in V1;
-- non-number target in V1;
-- unsupported reducer;
-- unsupported policy value;
-- duplicate/ambiguous configuration that would cause conflicting writes to the same target field.
-
-## Conflicting target rules
-
-Two rules writing the same target field are prohibited in V1.
-
-Bad:
-
-~~~yaml
-rollups:
-  - name: a
-    source_field: Estimate
-    target_field: Total
-    reducer: sum
-
-  - name: b
-    source_field: Cost
-    target_field: Total
-    reducer: sum
-~~~
-
-This must fail validation rather than depend on execution order.
-
-## Source equals target
-
-V1 should reject `source_field == target_field` until same-field recursive semantics are explicitly designed and tested.
-
-Using separate source and target fields makes ownership clear and avoids overwriting leaf estimates.
-
-## Field names versus IDs
-
-Users configure human-readable field names for portability.
+## Name resolution
 
 At runtime:
 
 ~~~text
-config name -> resolve GitHub field -> internal field ID
+configured exact name
+   -> GET organization Issue Fields
+   -> validate unique match and type
+   -> REST numeric ID + GraphQL node ID
 ~~~
 
-Logs should include both name and ID when safe/useful.
+Do not discover field IDs only from values currently present on an issue; the target can legitimately be unset.
+
+If exact-name resolution is absent or ambiguous, fail configuration.
+
+## Invalid V1 config
+
+Reject:
+
+- unsupported schema version;
+- empty rules;
+- too many rules;
+- duplicate rule names;
+- missing source/target;
+- source field absent;
+- target field absent;
+- source not numeric;
+- target not numeric;
+- source == target;
+- unsupported reducer;
+- unsupported missing policy;
+- multiple rules claiming the same target field;
+- unknown top-level/rule keys unless schema explicitly permits them.
+
+Strict unknown-key rejection prevents misspellings from silently changing semantics.
 
 ## Missing config
 
-No config means IssueRollup is disabled for that repository.
+No config means IssueRollup is disabled for that parent repository.
 
-This is not an error.
+Not an error.
 
 ## Invalid config
 
-Invalid config disables calculation for that repository until fixed and should produce a clearly discoverable diagnostic.
+Invalid config means no mutations for that repository until fixed.
 
-Do not guess intended field names.
+Log actionable validation details without publishing secrets.
 
-## Future schema evolution
+## Repository trust model
 
-Potential V2 additions:
+The configuration file is untrusted repository content.
 
-~~~yaml
-rollups:
-  - name: total-effort
-    source_field: Effort
-    target_field: Total Effort
-    reducer: sum
-    include_self: false
+It is declarative and may not contain:
 
-  - name: max-severity
-    source_field: Severity
-    target_field: Rollup Severity
-    reducer: highest
-    order: [Low, Medium, High, Critical]
+- executable code;
+- shell commands;
+- arbitrary URLs;
+- file paths outside the fixed config path;
+- arbitrary GraphQL/REST fragments;
+- secret references.
 
-  - name: latest-date
-    source_field: Target Date
-    target_field: Rollup Target Date
-    reducer: latest
-~~~
+## Renamed Issue Fields
 
-Do not implement these by silently extending version 1 in incompatible ways.
+Because V1 config is name-based, renaming a field in GitHub invalidates a rule until config is updated.
+
+IssueRollup must fail visibly rather than guessing by stale cached ID.
+
+A future schema can optionally support explicit IDs.
+
+## Future schema
+
+Potential versioned additions:
+
+- alternate reducers;
+- date/select fields;
+- explicit field IDs;
+- cross-repository opt-in after support is proven;
+- Project V2 adapter selection.
+
+Do not silently broaden version 1 with incompatible semantics.
