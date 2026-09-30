@@ -2,6 +2,7 @@ import {
   WORK_ENVELOPE_VERSION,
   type IssueIdentity,
   type IssuesAction,
+  type RelationshipIssueIdentity,
   type RepositoryIdentity,
   type SubIssuesAction,
   type WorkEnvelopeV1,
@@ -38,7 +39,9 @@ function repositoryIdentity(payload: Record<string, unknown>): RepositoryIdentit
   if (repo === null) return null;
   const id = positiveSafeInteger(repo.id);
   const fullName = nonEmptyString(repo.full_name);
-  if (id === null || fullName === null || !fullName.includes("/")) return null;
+  if (id === null || fullName === null) return null;
+  const parts = fullName.split("/");
+  if (parts.length !== 2 || parts.some((part) => part.length === 0 || part.trim() !== part || /\s/.test(part))) return null;
   return { id, fullName };
 }
 
@@ -50,6 +53,14 @@ function issueIdentity(payload: Record<string, unknown>): IssueIdentity | null {
   if (id === null || number === null) return null;
   const nodeId = nonEmptyString(issue.node_id);
   return nodeId === null ? { id, number } : { id, number, nodeId };
+}
+
+function relationshipIssueIdentity(value: unknown): RelationshipIssueIdentity | null {
+  const issue = record(value);
+  if (issue === null) return null;
+  const id = positiveSafeInteger(issue.id);
+  const number = positiveSafeInteger(issue.number);
+  return id === null || number === null ? null : { id, number };
 }
 
 export function normalizeWebhook(
@@ -99,8 +110,16 @@ export function normalizeWebhook(
 
   const parentIssueId = positiveSafeInteger(body.parent_issue_id);
   const subIssueId = positiveSafeInteger(body.sub_issue_id);
-  if (parentIssueId === null || subIssueId === null) {
-    return { kind: "invalid", reason: "parent_issue_id and sub_issue_id are required for sub_issues events" };
+  const parentIssue = relationshipIssueIdentity(body.parent_issue);
+  const subIssue = relationshipIssueIdentity(body.sub_issue);
+  if (parentIssueId === null || subIssueId === null || parentIssue === null || subIssue === null) {
+    return {
+      kind: "invalid",
+      reason: "parent_issue_id, sub_issue_id, parent_issue.id/number, and sub_issue.id/number are required for sub_issues events",
+    };
+  }
+  if (parentIssue.id !== parentIssueId || subIssue.id !== subIssueId) {
+    return { kind: "invalid", reason: "sub_issues relationship identifiers are inconsistent" };
   }
 
   return {
@@ -109,7 +128,7 @@ export function normalizeWebhook(
       ...common,
       event: "sub_issues",
       action: action as SubIssuesAction,
-      relationship: { parentIssueId, subIssueId },
+      relationship: { parentIssue, subIssue },
     },
   };
 }

@@ -118,17 +118,35 @@ GitHub does not automatically retry failed webhook deliveries, so reconciliation
 - [Research and platform rationale](docs/RESEARCH.md)
 - [Developer Program / launch checklist](docs/LAUNCH_CHECKLIST.md)
 
+## Development
+
+Requires Node.js 24.21.0 (see `.nvmrc`). From a clean checkout:
+
+~~~bash
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run verify
+~~~
+
+`npm run verify` is the current CI quality gate and runs strict type checking plus the full build/test suite. Phase 1 deliberately does not add a separate lint or formatting dependency.
+
 ## Status
 
-**Design contracts complete; implementation has not started.**
+**Phase 1 — Local vertical slice: complete.**
 
-Phase 0 is documentation/contract complete. The next milestone is one real GitHub App vertical slice:
+The repository now contains a strict TypeScript local foundation with configuration parsing/validation, deterministic sum reduction and write planning, raw-body webhook HMAC verification, webhook/work-envelope normalization, narrow GitHub adapter contracts, error classification, and regression coverage.
+
+The core local contract is executable without GitHub credentials:
 
 ~~~text
 child Effort 3 + child Effort 5
               ->
 parent Total Effort 8
 ~~~
+
+IssueRollup is **not** a live or production-ready GitHub App yet. Phase 1 does not register an App, make authenticated GitHub calls, provide a durable queue/database, or deploy production infrastructure. Phase 2 is the live GitHub App vertical slice.
 
 ## Support
 

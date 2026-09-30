@@ -37,7 +37,7 @@ test("normalizes exact supported issues actions and safely classifies unknown ac
   assert.equal(normalizeWebhook("ping", "delivery-1", {}, new Date()).kind, "unsupported");
 });
 
-test("normalizes all supported sub_issues actions and retains relationship IDs after removal", () => {
+test("normalizes all supported sub_issues actions and retains relationship routing identity after removal", () => {
   for (const action of ["parent_issue_added", "parent_issue_removed", "sub_issue_added", "sub_issue_removed"] as const) {
     const result = normalizeWebhook(
       "sub_issues",
@@ -47,20 +47,45 @@ test("normalizes all supported sub_issues actions and retains relationship IDs a
         installation: { id: 123 },
         repository: { id: 456, full_name: "acme/widgets" },
         parent_issue_id: 1001,
+        parent_issue: { id: 1001, number: 41 },
         sub_issue_id: 1002,
+        sub_issue: { id: 1002, number: 42 },
       },
       new Date("2026-09-30T20:00:00.000Z"),
     );
     assert.equal(result.kind, "work");
-    if (result.kind === "work") assert.deepEqual(result.envelope.relationship, { parentIssueId: 1001, subIssueId: 1002 });
+    if (result.kind === "work") {
+      assert.deepEqual(result.envelope.relationship, {
+        parentIssue: { id: 1001, number: 41 },
+        subIssue: { id: 1002, number: 42 },
+      });
+    }
   }
 });
 
 test("malformed external identities are rejected by runtime validation", () => {
   assert.equal(normalizeWebhook("issues", "delivery-1", { ...basePayload, installation: {} }, new Date()).kind, "invalid");
   assert.equal(normalizeWebhook("issues", "delivery-1", { ...basePayload, repository: { id: 456 } }, new Date()).kind, "invalid");
+  assert.equal(normalizeWebhook("issues", "delivery-1", { ...basePayload, repository: { id: 456, full_name: "acme /widgets" } }, new Date()).kind, "invalid");
   assert.equal(normalizeWebhook("issues", "delivery-1", { ...basePayload, issue: { id: 789 } }, new Date()).kind, "invalid");
   assert.equal(normalizeWebhook("sub_issues", "delivery-2", { action: "sub_issue_removed", installation: { id: 123 }, repository: { id: 456, full_name: "acme/widgets" } }, new Date()).kind, "invalid");
+  assert.equal(
+    normalizeWebhook(
+      "sub_issues",
+      "delivery-2",
+      {
+        action: "sub_issue_removed",
+        installation: { id: 123 },
+        repository: { id: 456, full_name: "acme/widgets" },
+        parent_issue_id: 1001,
+        parent_issue: { id: 9999, number: 41 },
+        sub_issue_id: 1002,
+        sub_issue: { id: 1002, number: 42 },
+      },
+      new Date(),
+    ).kind,
+    "invalid",
+  );
 });
 
 test("mutation key is deterministic and scopes installation/repository/parent/rule", () => {

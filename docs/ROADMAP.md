@@ -25,7 +25,7 @@ Exit:
 
 ## Phase 1 — Local vertical slice
 
-Status: **next**
+Status: **complete**
 
 Build:
 
@@ -40,6 +40,8 @@ Build:
 No production hosting assumptions beyond interfaces.
 
 ## Phase 2 — Live GitHub App vertical slice
+
+Status: **next**
 
 Register/install App with:
 

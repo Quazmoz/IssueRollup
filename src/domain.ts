@@ -82,9 +82,14 @@ export type SubIssuesAction =
   | "sub_issue_removed";
 export type SupportedWebhookAction = IssuesAction | SubIssuesAction;
 
+export interface RelationshipIssueIdentity {
+  readonly id: number;
+  readonly number: number;
+}
+
 export interface RelationshipRoutingIdentity {
-  readonly parentIssueId: number;
-  readonly subIssueId: number;
+  readonly parentIssue: RelationshipIssueIdentity;
+  readonly subIssue: RelationshipIssueIdentity;
 }
 
 export interface WorkEnvelopeV1 {

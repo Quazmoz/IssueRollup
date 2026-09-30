@@ -42,6 +42,8 @@ test("enforces rule and byte bounds", () => {
 });
 
 test("rejects unsafe or ambiguous YAML constructs", () => {
+  assertConfigError(`${minimal}__proto__: { polluted: true }\n`, "UNKNOWN_KEY");
+  assertConfigError("version: 1\nversion: 1\nrollups: []\n", "INVALID_YAML");
   assert.throws(
     () => parseIssuerollupConfig("version: 1\nrollups: &rules\n  - name: a\n    source_field: S\n    target_field: T\n    reducer: sum\ncopy: *rules\n"),
     (error: unknown) => error instanceof ConfigValidationError && ["UNSAFE_YAML", "UNKNOWN_KEY"].includes(error.code),
