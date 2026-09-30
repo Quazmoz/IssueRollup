@@ -117,6 +117,9 @@ function repositoryFullNameFromApiUrl(value: unknown, context: string): string {
 
 function parseIssueRef(value: unknown, context: string): IssueRef {
   const record = asRecord(value, context);
+  if (record.pull_request !== undefined && record.pull_request !== null) {
+    boundary("UNSUPPORTED_PULL_REQUEST", `${context} must be an issue, not a pull request`);
+  }
   return {
     repositoryFullName: repositoryFullNameFromApiUrl(record.repository_url, context),
     issueId: positiveSafeInteger(record, "id", context),
