@@ -143,11 +143,13 @@ Missing field value means “unset,” not zero.
 
 V1 must use a single-field mutation path.
 
-Preferred GraphQL operations:
+Required V1 GraphQL operations:
 
 - `createIssueFieldValue` when the target has no value;
 - `updateIssueFieldValue` when the target already has a value;
 - `deleteIssueFieldValue` when the derived value must be cleared.
+
+GitHub also documents `setIssueFieldValue`, but V1 intentionally standardizes on explicit create/update/delete planning so write intent and clear semantics remain visible in tests and logs.
 
 For numeric fields, `IssueFieldCreateOrUpdateInput` supplies:
 
@@ -204,16 +206,16 @@ DELETE /orgs/{org}/issue-fields/{id}
 
 IssueRollup consumes field definitions; it does not own them.
 
-## REST POST/PATCH field-value paths
+## Alternate REST field-value writes
 
-GitHub also exposes REST operations capable of setting field values. Do not adopt them as the V1 derived-write path merely because they appear convenient.
+GitHub also exposes REST operations that can add/set/delete Issue Field values. Some are field-safe when used correctly, while the bulk `PUT` path is explicitly destructive to omitted values.
 
-Any alternate write strategy must first have contract tests proving:
+Do not mix write strategies in V1. Any future move away from the GraphQL create/update/delete contract must first have contract tests proving:
 
 - exactly one intended field changes;
-- unrelated fields remain byte-for-byte equivalent semantically;
+- unrelated fields remain semantically unchanged;
 - clear semantics are field-specific;
-- duplicate calls converge;
+- duplicate/repeated calls converge;
 - authorization is identical or narrower than the approved permission contract.
 
 ## Status/error classification
@@ -226,9 +228,12 @@ At the adapter boundary classify at least:
 - 410: resource gone/API version issue where applicable;
 - 422: validation/semantic failure -> do not blind-retry;
 - 429 or rate-limit headers: respect server guidance;
-- 5xx/timeouts: bounded retry.
+- 5xx/timeouts on reads: bounded retry;
+- timeout/connection failure/5xx after a mutation may have been accepted: classify as ambiguous outcome, reload current target + current authoritative inputs, re-evaluate, then decide whether a new mutation is still required.
 
 Do not retry a deterministic 4xx in a tight loop.
+
+Never blindly replay a mutation whose outcome is unknown. A retry is a new decision based on freshly reloaded state, not a replay of the old write plan.
 
 ## Rate-limit discipline
 
@@ -237,6 +242,7 @@ Do not retry a deterministic 4xx in a tight loop.
 - bounded concurrency;
 - exponential backoff with jitter for retry-safe transient failures;
 - honor `Retry-After` and GitHub rate-limit headers;
+- capture `X-GitHub-Request-Id` when available for diagnosis;
 - cache organization field definitions by a short TTL or validation key only as an optimization.
 
 ## Current platform constraints

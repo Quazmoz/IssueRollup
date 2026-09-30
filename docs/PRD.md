@@ -84,7 +84,8 @@ For every V1 rule:
 - target exists;
 - both are `number`;
 - source and target are distinct;
-- target is not claimed by another rule.
+- target is not claimed by another rule;
+- no target field is used as the source field of another V1 rule.
 
 ### FR-3 GitHub App authentication
 
@@ -94,12 +95,16 @@ No user PAT is required.
 
 ### FR-4 Webhook ingestion
 
-Relevant webhook families:
+Relevant webhook families/actions:
 
-- `issues` for Issue Field set/update/clear events;
-- `sub_issues` for hierarchy changes.
+- `issues.field_added` for Issue Field set/update;
+- `issues.field_removed` for Issue Field clear;
+- `sub_issues.parent_issue_added`;
+- `sub_issues.parent_issue_removed`;
+- `sub_issues.sub_issue_added`;
+- `sub_issues.sub_issue_removed`.
 
-Ingress verifies the webhook and hands normalized work to the worker path.
+Ingress verifies the webhook and durably hands a bounded normalized work item to the worker path. Relationship identifiers from the payload may be retained for routing—especially removal events whose old relationship no longer exists in current state—but payload field values are never final calculation inputs.
 
 ### FR-5 Authoritative reload
 
@@ -192,6 +197,14 @@ Repeated processing converges and same-value calculations do not write.
 
 Final correctness must not depend on delivery order.
 
+### Concurrent-writer safety
+
+Work that can mutate the same `(installation, repository, parent issue, rule)` key must be serialized or protected by an equivalent fencing mechanism across worker instances.
+
+Compare-before-write alone is insufficient because an older worker can otherwise finish after a newer worker and restore stale derived data.
+
+After an ambiguous mutation outcome (for example, timeout after the request may have succeeded), re-read authoritative GitHub state and re-plan before any replay.
+
 ### Least privilege
 
 GitHub App permissions must match `GITHUB_APP.md`.
@@ -220,6 +233,12 @@ Expected setup:
 6. Parent derived values update automatically.
 
 No dashboard is required.
+
+### Configuration lifecycle
+
+Configuration changes take effect on the next relevant recalculation or explicit reconciliation; V1 does not subscribe to repository `push` events solely to discover config changes.
+
+Removing or invalidating `.github/issuerollup.yml` disables further IssueRollup mutations for that repository. Because V1 intentionally keeps no historical ownership database, removing a rule or changing its target field does **not** automatically discover and clear values previously written under the old rule. Operators must clear obsolete derived values explicitly after disabling/changing the rule, or use a future decommission/migration command if one is added.
 
 ## Out of scope
 

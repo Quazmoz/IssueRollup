@@ -30,6 +30,8 @@ Do not perform the full hierarchy/field fan-out on the request thread in product
 
 If enqueue fails, do not return a false success.
 
+A production enqueue is "durable" only after the queue/transport confirms persistence outside the ingress process's volatile memory. In-memory handoff is not a production acknowledgement boundary.
+
 ## Signature validation
 
 Use:
@@ -65,6 +67,8 @@ Use it for:
 
 Correctness still relies on idempotent recomputation because the same delivery can legitimately be redelivered.
 
+Dedupe must distinguish successful/in-flight work from failed work. A delivery ID must not become a permanent tombstone that prevents an operator redelivery or recovery retry after the prior attempt failed.
+
 ## Events
 
 ### issues
@@ -78,12 +82,14 @@ Relevant Issue Field actions from GitHub Issue Fields documentation:
 
 Relevant hierarchy activity is delivered through the `sub_issues` event family.
 
-Because GitHub can add webhook actions, the router must:
+V1 allowlists:
 
-- allowlist supported actions;
-- log unknown action names;
-- ignore unknown actions safely;
-- preserve live fixtures for the actions V1 relies on.
+- `parent_issue_added`;
+- `parent_issue_removed`;
+- `sub_issue_added`;
+- `sub_issue_removed`.
+
+Because GitHub can add webhook actions, the router must log and safely ignore unknown action names until their semantics are explicitly supported and fixture-tested.
 
 See `EVENT_ROUTING.md`.
 
@@ -121,24 +127,30 @@ Workers always derive desired state from current GitHub state.
 
 ## Concurrency
 
-Two workers can target the same parent.
+Two workers can target the same parent/rule.
 
-V1 permits eventual convergence.
+Reload + compare-before-write is not sufficient by itself: worker A can calculate an older state, worker B can write a newer result, and worker A can then finish last and overwrite B.
 
-Optional optimization:
+V1 therefore requires serialization or equivalent fencing across worker instances for:
 
-- serialize/coalesce by installation/repository/parent/rule.
+~~~text
+installation + repository + parent issue + rule
+~~~
 
-Do not use a lock as a substitute for compare-before-write.
+Acquire that mutation lane before the final authoritative reload; hold it through evaluation and the write/clear decision. Reconciliation uses the same key.
+
+Coalescing remains an optimization. The serialization/fencing mechanism is part of correctness.
 
 ## Retry classification
 
-Retryable examples:
+Retryable read examples:
 
 - timeout;
 - connection reset;
 - selected 5xx;
 - explicit rate-limit retry condition.
+
+For a mutation, timeout/connection failure/selected 5xx can mean GitHub committed the write but the client missed the response. Treat that outcome as unknown: reload current target and current inputs, recalculate, and create a fresh write plan before any further mutation. Never blindly replay the previous mutation.
 
 Potentially recoverable once:
 

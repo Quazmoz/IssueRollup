@@ -102,7 +102,9 @@ V1:
 
 - accepts finite numeric values;
 - rejects NaN/infinity at internal boundaries;
+- rejects a computed sum that becomes non-finite even when all individual inputs were finite;
 - performs JavaScript/GraphQL Float-compatible arithmetic;
+- treats `-0` and `0` as semantically equal for no-op planning;
 - avoids arbitrary string coercion;
 - does not promise exact decimal/currency arithmetic.
 

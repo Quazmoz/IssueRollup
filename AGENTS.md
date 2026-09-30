@@ -27,6 +27,7 @@ The documented contracts are intentional. If code and docs conflict, do not sile
 - No billing.
 - No Project V2 custom-field adapter.
 - No arbitrary formulas or executable repository configuration.
+- A V1 target field may not be used as another V1 rule's source field.
 - No product database is required for calculation state.
 - A production deployment may use a durable queue and short-lived deduplication storage.
 - Incorrect partial totals are worse than an explicit failure.
@@ -49,6 +50,7 @@ The documented contracts are intentional. If code and docs conflict, do not sile
 
 - Validate `X-Hub-Signature-256` against the raw request body before processing.
 - Inspect `X-GitHub-Event` and the payload `action`; ignore unknown actions safely.
+- V1 allowlists `issues.field_added`, `issues.field_removed`, and `sub_issues` actions `parent_issue_added`, `parent_issue_removed`, `sub_issue_added`, and `sub_issue_removed`.
 - Preserve `X-GitHub-Delivery` in logs/jobs.
 - Do not assume `sender` is always a human.
 - Production ingress must return 2XX within GitHub's 10-second window.
@@ -66,6 +68,9 @@ The documented contracts are intentional. If code and docs conflict, do not sile
 - Pure reducers and write planning are exhaustively unit tested.
 - All external calls have explicit timeout/error classification.
 - Retries are bounded and only used for retry-safe operations.
+- A timeout/5xx after a mutation has an ambiguous outcome: reload GitHub state and re-plan before any replay.
+- Mutations for the same installation/repository/parent/rule key are serialized or equivalently fenced; compare-before-write alone is not concurrency control.
+- Delivery dedupe must not suppress legitimate reprocessing of failed work or operator redelivery.
 - Logs contain repository, issue, rule, delivery ID, and decision, but no credentials.
 - Same-value calculations produce no write.
 - Reconciliation and webhook workers call the same calculation primitives.

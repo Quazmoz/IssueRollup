@@ -12,6 +12,10 @@
 - [x] 10-second webhook requirement documented.
 - [x] No-automatic-redelivery behavior documented.
 - [x] Reconciliation contract documented.
+- [x] Same-key concurrent writer safety documented.
+- [x] Ambiguous mutation outcome recovery documented.
+- [x] Config lifecycle/decommission limitation documented.
+- [x] Exact V1 webhook action allowlist documented.
 - [x] Test/release gates documented.
 
 ## GitHub App registration
@@ -70,6 +74,9 @@ At this point IssueRollup is a genuine integration in development.
 - [ ] Unknown action ignored safely.
 - [ ] Duplicate job converges.
 - [ ] Out-of-order jobs converge.
+- [ ] Same-key concurrent workers cannot leave a stale final write.
+- [ ] Timeout-after-success mutation recovery re-reads/re-plans.
+- [ ] Failed delivery can be redelivered without dedupe suppression.
 - [ ] Retry/rate-limit classification.
 - [ ] Reconciliation path.
 - [ ] Last-child clear.

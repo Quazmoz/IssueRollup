@@ -9,7 +9,7 @@ For every verified delivery:
 1. identify `X-GitHub-Event`;
 2. validate the payload `action`;
 3. normalize installation, repository, issue, and delivery identifiers;
-4. durably enqueue a bounded work item;
+4. durably enqueue a bounded, versioned work item that preserves routing IDs needed after relationship removal;
 5. worker reloads current GitHub state;
 6. worker determines affected parent/rule pairs;
 7. worker recalculates and conditionally writes.
@@ -48,14 +48,24 @@ Optimization may coalesce duplicate work, but correctness must come from same-st
 
 GitHub exposes the `sub_issues` webhook family for hierarchy activity and requires at least Issues read permission.
 
-Known action names include parent/sub-issue added/removed forms. GitHub can add actions over time, so implementation must use an allowlist plus unknown-action logging rather than an exhaustive schema assumption.
+V1 allowlists these documented action names:
+
+- `parent_issue_added`;
+- `parent_issue_removed`;
+- `sub_issue_added`;
+- `sub_issue_removed`.
+
+GitHub can add actions over time, so any other action is logged and ignored until its routing semantics are explicitly added and fixture-tested.
 
 For every supported hierarchy event:
 
+- preserve parent/sub-issue identities supplied by the payload as routing evidence;
 - identify old parent if supplied/discoverable;
 - identify new parent if supplied/discoverable;
 - recalculate each affected parent;
 - propagate ancestors after a changed derived value.
+
+Removal payload relationship identity is important because the old relationship may no longer be discoverable from current GitHub state after the event. Payload relationship IDs may select recalculation candidates, but current API state still determines the calculation itself.
 
 Live webhook captures from the controlled test repository must become sanitized fixtures before MVP completion.
 

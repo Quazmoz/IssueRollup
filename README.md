@@ -120,9 +120,9 @@ GitHub does not automatically retry failed webhook deliveries, so reconciliation
 
 ## Status
 
-**Design / early development.**
+**Design contracts complete; implementation has not started.**
 
-The first implementation milestone is one real GitHub App vertical slice:
+Phase 0 is documentation/contract complete. The next milestone is one real GitHub App vertical slice:
 
 ~~~text
 child Effort 3 + child Effort 5

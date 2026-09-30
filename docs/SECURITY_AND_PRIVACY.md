@@ -9,6 +9,8 @@ IssueRollup has permission to mutate issue metadata. The primary risks are:
 - overbroad GitHub App permissions;
 - credential leakage;
 - replay/resource amplification;
+- stale-write races between concurrent workers;
+- ambiguous mutation outcomes after network failure;
 - untrusted repository configuration.
 
 ## Data minimization
@@ -106,6 +108,12 @@ V1:
 - prohibits REST bulk replacement;
 - contract-tests preservation of unrelated fields;
 - compares desired/current before write.
+
+## Concurrency and mutation integrity
+
+A stale calculation must not be allowed to overwrite a newer derived value merely because it finishes later. Production workers must serialize or equivalently fence mutations for the same installation/repository/parent/rule key.
+
+After a mutation transport failure where GitHub may have accepted the request, remote state is unknown. Re-read and re-plan before any retry; do not replay the old mutation blindly.
 
 ## Cross-repository safety
 

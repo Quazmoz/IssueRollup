@@ -42,6 +42,7 @@ Prove the dangerous parts—GitHub authorization, event routing, and field mutat
 - duplicate names;
 - duplicate target ownership;
 - source == target;
+- target reused as another rule's source;
 - missing fields;
 - non-number fields;
 - unsupported reducer/policy;
@@ -61,7 +62,10 @@ Cover:
 - missing signature;
 - supported `issues` field actions;
 - irrelevant `issues` action;
-- supported `sub_issues` actions captured from live GitHub;
+- `sub_issues.parent_issue_added`;
+- `sub_issues.parent_issue_removed`;
+- `sub_issues.sub_issue_added`;
+- `sub_issues.sub_issue_removed`;
 - unknown future action;
 - duplicate delivery ID;
 - malformed installation/repository identity.
@@ -101,7 +105,8 @@ Verify:
 - 404 contextual handling;
 - 410 handling;
 - 422 nonretry;
-- 5xx retry;
+- 5xx read retry;
+- ambiguous mutation outcome triggers reload/re-plan rather than blind replay;
 - rate-limit headers honored.
 
 ## 6. GraphQL writer tests
@@ -178,17 +183,21 @@ If practical, test selected-repository installation to confirm the documented V1
 
 Simulate:
 
-- queue unavailable;
+- queue unavailable before durable acceptance;
 - worker crash before write;
 - worker crash after write;
 - duplicate job;
+- failed job followed by redelivery with the same delivery ID;
 - out-of-order jobs;
-- GitHub timeout;
+- two worker instances targeting the same parent/rule;
+- stale-worker inversion attempt where the older calculation would otherwise finish last;
+- timeout after GitHub applied a mutation but before the response reached the client;
+- GitHub read timeout;
 - 5xx;
 - secondary rate limit;
 - installation token expiry.
 
-Reconciliation must converge final state.
+Assert keyed serialization/fencing prevents a stale final write. Assert ambiguous mutation recovery reloads/re-plans and does not blindly duplicate the write. Reconciliation must converge final state.
 
 ## Release gate
 
@@ -203,4 +212,6 @@ MVP is not complete until:
 - cross-repository rejection passes;
 - last-child cleanup passes;
 - reconciliation repairs corruption;
+- same-key concurrent workers cannot leave a stale final value;
+- timeout-after-success mutation recovery is proven;
 - no unrelated metadata is mutated.

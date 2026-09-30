@@ -51,7 +51,7 @@ is accepted by V1.
 
 Required non-empty array.
 
-Set a conservative implementation maximum (recommended: 16 rules per repository) and reject larger configs rather than allowing unbounded webhook fan-out.
+V1 maximum: **16 rules per repository**. Reject larger configs rather than allowing unbounded webhook fan-out.
 
 ## Rule schema
 
@@ -125,9 +125,16 @@ Reject:
 - unsupported reducer;
 - unsupported missing policy;
 - multiple rules claiming the same target field;
+- any target field also used as another rule's source field;
 - unknown top-level/rule keys unless schema explicitly permits them.
 
 Strict unknown-key rejection prevents misspellings from silently changing semantics.
+
+## Cross-rule dependencies
+
+V1 rules are intentionally independent.
+
+A field used as any rule's `target_field` may not be used as another rule's `source_field` in the same config. This prevents hidden derived-to-derived dependency graphs, ordering cycles, and webhook feedback between rules. A future schema may add explicit dependency semantics, but version 1 does not infer them.
 
 ## Missing config
 
@@ -140,6 +147,14 @@ Not an error.
 Invalid config means no mutations for that repository until fixed.
 
 Log actionable validation details without publishing secrets.
+
+## Configuration change lifecycle
+
+V1 does not subscribe to repository `push` events solely to detect config edits.
+
+A newly added or changed config becomes effective on the next relevant IssueRollup webhook calculation or explicit reconciliation.
+
+Removing the config disables IssueRollup for the repository. Because V1 stores no historical rule-ownership database, it cannot safely discover every value previously written by a removed/renamed rule. Removing a rule or changing its target field therefore does not automatically clear the old target values. After disabling/changing the rule, operators must explicitly clear obsolete derived values; a future decommission/migration command may automate that workflow.
 
 ## Repository trust model
 

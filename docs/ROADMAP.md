@@ -2,7 +2,7 @@
 
 ## Phase 0 — Contract hardening
 
-Status: **current**
+Status: **complete**
 
 Complete:
 
@@ -24,6 +24,8 @@ Exit:
 - implementation can begin without guessing API semantics.
 
 ## Phase 1 — Local vertical slice
+
+Status: **next**
 
 Build:
 
@@ -68,6 +70,8 @@ Add:
 - nested propagation;
 - last-child clear;
 - retries/rate limits;
+- keyed per-parent/rule serialization or equivalent fencing across workers;
+- ambiguous mutation outcome reload/re-plan;
 - reconciliation;
 - live webhook fixtures;
 - failure injection;

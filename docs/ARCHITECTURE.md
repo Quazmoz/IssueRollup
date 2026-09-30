@@ -11,7 +11,7 @@ V1 has no product database containing a second copy of issue hierarchy or field 
 Recommended:
 
 - TypeScript
-- current Node.js LTS
+- Node.js Active LTS selected at implementation bootstrap and pinned in repository/runtime metadata
 - Octokit / GitHub App authentication library
 - lightweight HTTP framework or Probot
 - YAML parser in safe mode
@@ -65,6 +65,20 @@ Responsibilities:
 - respond 2XX within 10 seconds after successful acceptance.
 
 If durable acceptance fails, do not claim success.
+
+For production, "durably enqueue" means the queue/transport has acknowledged persistence outside the ingress process's volatile memory. An in-memory queue is acceptable only for local tests, never as the production acceptance boundary.
+
+The normalized work envelope should contain only routing/correlation data needed after acknowledgement, such as:
+
+- delivery ID;
+- installation ID;
+- event and action;
+- repository ID/full name;
+- primary issue ID/number when present;
+- parent/sub-issue IDs supplied by relationship events when present;
+- receive timestamp/schema version.
+
+Field values from the webhook remain untrusted hints and are not persisted as authoritative calculation inputs.
 
 ### Event normalizer/router
 
@@ -158,6 +172,8 @@ V1 uses single-field GraphQL mutations:
 
 The writer never changes Issue Field definitions and never replaces the issue's complete field set.
 
+If the transport fails after a mutation may have reached GitHub, the writer treats the result as **unknown**, not as failed. It reloads current GitHub state, re-evaluates, and re-plans before deciding whether another mutation is necessary.
+
 ### Propagation coordinator
 
 After a changed target:
@@ -201,17 +217,23 @@ See `API_CONTRACT.md`.
 
 ## Concurrency
 
-Two events can target the same parent.
+Two events can target the same parent/rule, and an older calculation can otherwise finish after a newer one.
 
-V1 relies on:
+Compare-before-write alone does **not** prevent stale-write inversion.
 
-- reload current state;
-- deterministic evaluation;
-- compare-before-write;
-- narrow field mutations;
-- eventual convergence.
+V1 therefore requires a single authoritative mutation lane per:
 
-Optional per-parent queue serialization/coalescing may reduce thrash but is not required for correctness.
+~~~text
+installation + repository + parent issue + rule
+~~~
+
+The implementation may satisfy this with a queue message-group/concurrency key, a distributed lease with fencing, or another mechanism that is correct across all worker instances. The protected section begins before the final authoritative reload and covers reload -> evaluate -> write/clear decision.
+
+Coalescing may reduce duplicate work but is not the correctness mechanism.
+
+If the deployment cannot guarantee the mutation lane, it must requeue/fail rather than knowingly execute concurrent writers for the same key.
+
+Reconciliation uses the same mutation key so recovery cannot race normal workers into a stale final value.
 
 ## Caching
 
