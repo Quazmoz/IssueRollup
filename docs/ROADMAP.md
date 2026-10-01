@@ -65,15 +65,16 @@ Implemented before live credentials:
 - pinned REST transport and runtime response validation;
 - real config/field/hierarchy/value adapters;
 - explicit GraphQL create/update/delete writer;
-- GitHub App JWT signing and repository-scoped installation-token exchange;
-- dry-run-by-default live contract harness;
+- GitHub App JWT signing and repository-scoped installation-token exchange with returned-scope verification;
+- explicit rejection of non-organization-owned repositories;
+- dry-run-by-default live contract harness that requires GitHub App credentials;
 - post-write target verification;
 - non-target field preservation comparison;
 - fail-closed Phase 2 handling for cross-repository and nested hierarchy inputs.
 
 Still required to complete Phase 2:
 
-- register/install the controlled GitHub App with the documented permissions;
+- create or use a controlled GitHub organization/repository and register/install the GitHub App with the documented permissions;
 - capture a real webhook fixture;
 - execute the live 3 + 5 -> 8 path;
 - exercise live create, update, and delete while preservation checks remain green.
