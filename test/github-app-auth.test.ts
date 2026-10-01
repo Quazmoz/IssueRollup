@@ -63,7 +63,12 @@ test("installation token exchange is REST-version pinned and repository scoped",
     capturedUrl = String(input);
     capturedInit = init;
     return new Response(
-      JSON.stringify({ token: "ghs_new_format_is_not_assumed", expires_at: "2027-01-16T00:00:00Z" }),
+      JSON.stringify({
+        token: "ghs_new_format_is_not_assumed",
+        expires_at: "2027-01-16T00:00:00Z",
+        repository_selection: "selected",
+        repositories: [{ id: 456, full_name: "acme/widgets" }],
+      }),
       { status: 201, headers: { "content-type": "application/json" } },
     );
   };
