@@ -21,27 +21,13 @@ function positiveIntegerEnv(name: string): number {
   return value;
 }
 
-async function installationToken(repositoryId: number): Promise<string> {
-  const directToken = process.env.ISSUEROLLUP_INSTALLATION_TOKEN;
-  const hasAppCredentials =
-    process.env.ISSUEROLLUP_APP_CLIENT_ID !== undefined ||
-    process.env.ISSUEROLLUP_APP_PRIVATE_KEY !== undefined ||
-    process.env.ISSUEROLLUP_INSTALLATION_ID !== undefined;
-
-  if (directToken !== undefined && directToken.length > 0) {
-    if (hasAppCredentials) {
-      throw new Error("use either ISSUEROLLUP_INSTALLATION_TOKEN or GitHub App credentials, not both");
-    }
-    return directToken;
-  }
-
-  const token = await createInstallationToken({
+async function installationAuthentication(repositoryId: number) {
+  return createInstallationToken({
     clientId: requiredEnv("ISSUEROLLUP_APP_CLIENT_ID"),
     privateKeyPem: requiredEnv("ISSUEROLLUP_APP_PRIVATE_KEY"),
     installationId: positiveIntegerEnv("ISSUEROLLUP_INSTALLATION_ID"),
     repositoryId,
   });
-  return token.token;
 }
 
 function canonicalize(value: unknown): unknown {
@@ -87,7 +73,8 @@ async function main(): Promise<void> {
     fullName: requiredEnv("ISSUEROLLUP_REPOSITORY"),
   } as const;
   const parentIssueNumber = positiveIntegerEnv("ISSUEROLLUP_PARENT_ISSUE");
-  const adapters = createLiveGitHubAdapters(await installationToken(repositoryId));
+  const authentication = await installationAuthentication(repositoryId);
+  const adapters = createLiveGitHubAdapters(authentication.token);
 
   const before = apply
     ? await adapters.values.listFieldValues(repository, parentIssueNumber)
@@ -117,7 +104,21 @@ async function main(): Promise<void> {
   }
 
   process.stdout.write(
-    `${JSON.stringify({ mode: apply ? "apply" : "dry-run", result, preservation }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        mode: apply ? "apply" : "dry-run",
+        authentication: {
+          method: "github-app-jwt",
+          repositoryId: authentication.repositoryId,
+          repositoryScopeVerified: true,
+          expiresAt: authentication.expiresAt,
+        },
+        result,
+        preservation,
+      },
+      null,
+      2,
+    )}\n`,
   );
 
   if (result.kind === "failed" || result.kind === "ambiguous") process.exitCode = 2;
