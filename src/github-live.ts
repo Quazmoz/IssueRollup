@@ -191,6 +191,14 @@ export class GitHubRestAdapter
       boundary("REPOSITORY_IDENTITY_MISMATCH", "repository identity returned by GitHub does not match the work item");
     }
 
+    const owner = asRecord(metadata.owner, "repository.owner");
+    if (stringField(owner, "type", "repository.owner") !== "Organization") {
+      boundary(
+        "UNSUPPORTED_REPOSITORY_OWNER",
+        "IssueRollup V1 requires an organization-owned repository",
+      );
+    }
+
     const path = `${repoPath}/contents/${CONFIG_PATH.split("/").map(encodeSegment).join("/")}?ref=${encodeSegment(defaultBranch)}`;
     let payload: unknown;
     try {
