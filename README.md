@@ -143,8 +143,9 @@ The repository now includes:
 - real REST adapters for repository config, organization Issue Fields, issue identity, parent/sub-issue hierarchy, and Issue Field values;
 - pinned GitHub REST API headers and bounded request timeouts;
 - static GraphQL create/update/delete mutations for one derived Issue Field;
-- GitHub App RS256 JWT generation and repository-scoped installation-token exchange;
-- a dry-run-by-default live contract harness;
+- GitHub App RS256 JWT generation and repository-scoped installation-token exchange with returned-scope verification;
+- explicit fail-closed rejection of non-organization-owned repositories;
+- a dry-run-by-default live contract harness that requires GitHub App credentials rather than an opaque token;
 - post-write target verification;
 - live-harness comparison proving non-target Issue Field values remain unchanged;
 - fail-closed handling for cross-repository edges and nested hierarchies that Phase 3 has not implemented yet.
