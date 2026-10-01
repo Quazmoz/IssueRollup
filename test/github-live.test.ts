@@ -74,7 +74,7 @@ test("REST adapter loads config, fields, hierarchy, issue identity, and numeric 
     const url = new URL(String(input));
     const route = `${url.pathname}${url.search}`;
     if (route === "/repos/acme/widgets") {
-      return jsonResponse({ id: 456, full_name: "acme/widgets", default_branch: "main" });
+      return jsonResponse({ id: 456, full_name: "acme/widgets", default_branch: "main", owner: { login: "acme", type: "Organization" } });
     }
     if (
       route ===
