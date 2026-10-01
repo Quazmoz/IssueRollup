@@ -67,10 +67,12 @@ Users create and manage:
 ## Authentication
 
 1. Receive verified GitHub App webhook with installation ID.
-2. Create/reuse installation access token.
+2. Create/reuse an installation access token scoped to the intended repository.
 3. Use installation token with REST/GraphQL.
 4. Refresh at/near expiry.
 5. Never expose installation token to client code.
+
+For Phase 2 qualification, the harness mints the token itself from GitHub App credentials and fails closed unless GitHub's response confirms exactly the requested repository ID. An opaque pre-minted token is intentionally not accepted as qualification evidence.
 
 GitHub currently documents installation-token lifetime as one hour.
 
