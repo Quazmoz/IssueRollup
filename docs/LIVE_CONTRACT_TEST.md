@@ -36,7 +36,7 @@ Subscribe only to:
 - `issues`
 - `sub_issues`
 
-Install it on a controlled organization-owned test repository.
+Install it on a controlled organization-owned test repository. Personal-account repositories are outside the V1 contract and the live adapter rejects them explicitly.
 
 Do not commit the App private key, webhook secret, JWT, or installation token.
 
@@ -83,15 +83,9 @@ export ISSUEROLLUP_PARENT_ISSUE='123'
 export ISSUEROLLUP_RULE='total-effort'
 ~~~
 
-The installation-token exchange scopes the generated token to `ISSUEROLLUP_REPOSITORY_ID`.
+The installation-token exchange requests access only to `ISSUEROLLUP_REPOSITORY_ID`, and the harness now fails closed unless GitHub's token response confirms exactly that repository scope.
 
-For short-lived diagnostic use, an already generated **GitHub App installation token** may instead be supplied as:
-
-~~~bash
-export ISSUEROLLUP_INSTALLATION_TOKEN='...'
-~~~
-
-Do not supply both methods. Do not substitute a maintainer PAT for the GitHub App proof.
+The Phase 2 harness intentionally does **not** accept an opaque pre-minted token. This prevents a maintainer PAT or an unverified installation token from being substituted for the required GitHub App JWT -> installation-token proof.
 
 ## Dry run
 
@@ -103,7 +97,11 @@ npm run live:contract
 Expected characteristics:
 
 - `mode` is `dry-run`;
+- `authentication.method` is `github-app-jwt`;
+- `authentication.repositoryScopeVerified` is `true`;
+- `authentication.repositoryId` matches `ISSUEROLLUP_REPOSITORY_ID`;
 - no GraphQL mutation is sent;
+- the repository preflight confirms an organization-owned repository;
 - the plan should converge on the current authoritative state;
 - with children 3 and 5 and a different current target, the plan should be a write to 8.
 
