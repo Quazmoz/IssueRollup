@@ -152,6 +152,23 @@ test("REST adapter loads config, fields, hierarchy, issue identity, and numeric 
   );
 });
 
+test("REST config boundary rejects personal repositories before organization field access", async () => {
+  const fetchImpl: FetchLike = async () =>
+    jsonResponse({
+      id: 456,
+      full_name: "quazmoz/widgets",
+      default_branch: "main",
+      owner: { login: "quazmoz", type: "User" },
+    });
+
+  const adapter = new GitHubRestAdapter(new GitHubHttpClient("token", { fetchImpl }));
+  await assert.rejects(
+    () => adapter.fetchConfig({ id: 456, fullName: "quazmoz/widgets" }),
+    (error: unknown) =>
+      error instanceof GitHubBoundaryError && error.code === "UNSUPPORTED_REPOSITORY_OWNER",
+  );
+});
+
 test("GraphQL writer uses only static single-field create/update/delete mutations", async () => {
   const captured: CapturedRequest[] = [];
   const fetchImpl: FetchLike = async (input, init) => {
