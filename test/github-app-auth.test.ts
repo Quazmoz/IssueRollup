@@ -84,11 +84,43 @@ test("installation token exchange is REST-version pinned and repository scoped",
   );
 
   assert.equal(token.token, "ghs_new_format_is_not_assumed");
+  assert.equal(token.repositoryId, 456);
   assert.equal(capturedUrl, "https://api.github.com/app/installations/123/access_tokens");
   const headers = new Headers(capturedInit?.headers);
   assert.equal(headers.get("x-github-api-version"), "2026-03-10");
   assert.match(headers.get("authorization") ?? "", /^Bearer [^.]+\.[^.]+\.[^.]+$/);
   assert.deepEqual(JSON.parse(String(capturedInit?.body)), { repository_ids: [456] });
+});
+
+test("installation token exchange fails closed when GitHub confirms a different repository scope", async () => {
+  const { privateKeyPem } = keyPair();
+  const fetchImpl: FetchLike = async () =>
+    new Response(
+      JSON.stringify({
+        token: "ghs_scoped_elsewhere",
+        expires_at: "2027-01-16T00:00:00Z",
+        repository_selection: "selected",
+        repositories: [{ id: 999, full_name: "acme/other" }],
+      }),
+      { status: 201, headers: { "content-type": "application/json" } },
+    );
+
+  await assert.rejects(
+    () =>
+      createInstallationToken(
+        {
+          clientId: "Iv1.client",
+          privateKeyPem,
+          installationId: 123,
+          repositoryId: 456,
+        },
+        { fetchImpl, nowSeconds: 1_800_000_000 },
+      ),
+    (error: unknown) =>
+      error instanceof GitHubAppAuthError &&
+      error.classification === "PERMANENT" &&
+      /different repository scope/.test(error.message),
+  );
 });
 
 test("installation-token transport failures are classified without exposing credentials", async () => {
