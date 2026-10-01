@@ -32,6 +32,8 @@ Do not:
 - assume a fixed token length or legacy token format;
 - fall back to a developer PAT in production.
 
+For Phase 2 qualification, request the installation token for exactly the controlled repository and verify the token response confirms that repository scope. Do not accept an opaque token as a substitute for proving the App JWT -> installation-token exchange.
+
 ## Field-definition discovery
 
 ### REST
