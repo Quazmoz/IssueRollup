@@ -20,6 +20,8 @@ export interface GitHubAppAuthOptions {
 export interface InstallationToken {
   readonly token: string;
   readonly expiresAt: string;
+  /** Repository ID confirmed by GitHub in the repository-scoped token response. */
+  readonly repositoryId: number;
 }
 
 interface GitHubAppAuthErrorDetails {
@@ -193,5 +195,36 @@ export async function createInstallationToken(
     });
   }
 
-  return { token: record.token, expiresAt: record.expires_at };
+  if (!Array.isArray(record.repositories) || record.repositories.length !== 1) {
+    throw new GitHubAppAuthError(
+      "GitHub installation-token response did not confirm the requested single-repository scope",
+      {
+        classification: "PERMANENT",
+        status: response.status,
+      },
+    );
+  }
+  const scopedRepository = record.repositories[0];
+  if (
+    typeof scopedRepository !== "object" ||
+    scopedRepository === null ||
+    Array.isArray(scopedRepository) ||
+    typeof (scopedRepository as Record<string, unknown>).id !== "number" ||
+    !Number.isSafeInteger((scopedRepository as Record<string, unknown>).id) ||
+    (scopedRepository as Record<string, unknown>).id !== input.repositoryId
+  ) {
+    throw new GitHubAppAuthError(
+      "GitHub installation-token response confirmed a different repository scope",
+      {
+        classification: "PERMANENT",
+        status: response.status,
+      },
+    );
+  }
+
+  return {
+    token: record.token,
+    expiresAt: record.expires_at,
+    repositoryId: input.repositoryId,
+  };
 }
