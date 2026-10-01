@@ -126,6 +126,12 @@ Use a controlled organization-owned repository.
 
 Required permissions must match production App settings.
 
+Before field/hierarchy assertions, qualification must also prove:
+
+- the harness authenticated by App JWT -> installation-token exchange, not by PAT/opaque token;
+- GitHub's token response confirms exactly the requested test repository ID;
+- repository metadata identifies an organization owner; user-owned repositories fail closed.
+
 ### Field catalog
 
 - `Issue Fields: read` lists target/source definitions;
@@ -177,7 +183,9 @@ Create a child in another repository under the same owner if GitHub permits it. 
 
 ### Installation scope
 
-If practical, test selected-repository installation to confirm the documented V1 same-repo guarantee.
+The Phase 2 harness always requests a token for exactly one repository and fails closed unless GitHub confirms that repository in the token response.
+
+If practical, also test a selected-repository installation to confirm the documented V1 same-repo guarantee.
 
 ## 8. Reliability/failure injection
 
