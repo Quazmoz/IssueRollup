@@ -90,7 +90,7 @@ It may use payload data to identify candidates, but final calculation uses curre
 
 ### GitHub installation client
 
-The Phase 2 live harness can sign a short-lived RS256 App JWT from an environment-provided private key and exchange it for an installation token scoped to the controlled test repository. It can also accept an already minted installation token for diagnostics.
+The Phase 2 live harness requires environment-provided GitHub App credentials, signs a short-lived RS256 App JWT, and exchanges it for an installation token requested for exactly the controlled test repository. The exchange fails closed unless GitHub's response confirms exactly that repository ID. The qualification harness intentionally does not accept an opaque pre-minted token, so a PAT or unverified token cannot stand in for GitHub App authentication evidence.
 
 Production requirements remain:
 
