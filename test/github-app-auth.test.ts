@@ -92,6 +92,35 @@ test("installation token exchange is REST-version pinned and repository scoped",
   assert.deepEqual(JSON.parse(String(capturedInit?.body)), { repository_ids: [456] });
 });
 
+test("installation token exchange fails closed when GitHub omits repository-scope confirmation", async () => {
+  const { privateKeyPem } = keyPair();
+  const fetchImpl: FetchLike = async () =>
+    new Response(
+      JSON.stringify({
+        token: "ghs_scope_not_confirmed",
+        expires_at: "2027-01-16T00:00:00Z",
+      }),
+      { status: 201, headers: { "content-type": "application/json" } },
+    );
+
+  await assert.rejects(
+    () =>
+      createInstallationToken(
+        {
+          clientId: "Iv1.client",
+          privateKeyPem,
+          installationId: 123,
+          repositoryId: 456,
+        },
+        { fetchImpl, nowSeconds: 1_800_000_000 },
+      ),
+    (error: unknown) =>
+      error instanceof GitHubAppAuthError &&
+      error.classification === "PERMANENT" &&
+      /did not confirm the requested single-repository scope/.test(error.message),
+  );
+});
+
 test("installation token exchange fails closed when GitHub confirms a different repository scope", async () => {
   const { privateKeyPem } = keyPair();
   const fetchImpl: FetchLike = async () =>
